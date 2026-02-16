@@ -179,7 +179,6 @@ class Editor {
     typeKey(e) {
         this.cursor_blink = 0;
         console.log(e.key);
-        
         if (e.ctrlKey) this.is_ctrl = true;
         if (e.shiftKey) this.is_shift = true;
         if (!this.is_ctrl && !this.is_shift)
@@ -438,28 +437,9 @@ class Editor {
                     }
                     break;
                 }
-                default: {
-                    if (e.key.length > 1) return;
-                    let change = this.deleteSelection();
-                    change.type = "insert";
-                    if (change.affected_lines.length === 0)
-                    {
-                        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
-                        change.selection_after = structuredClone(this.selection);
-                        change.affected_lines = [
-                            {
-                                line: this.cursor_y,
-                                before: this.lines[this.cursor_y],
-                                after: null
-                            }
-                        ];
-                    }
-                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x) + e.key + this.lines[this.cursor_y].substring(this.cursor_x);
-                    this.cursor_x++;
-                    change.affected_lines[0].after = this.lines[this.cursor_y];
-                    this.pushChange(change);
+                default: 
+                    this.typeLetter(e);
                     break;
-                }
             }
         }
         else if (!this.is_shift && this.is_ctrl) {
@@ -528,8 +508,6 @@ class Editor {
                     this.cursor_y = Math.min(this.lines.length - 1, y);
                     break;
                 }
-                default:
-                    break;
             }
         }
         else if (this.is_shift && !this.is_ctrl) {
@@ -615,10 +593,7 @@ class Editor {
                     }
                     break;
                 default:
-                    if (e.key.length > 1) return;
-                    this.deleteSelection();
-                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x) + e.key + this.lines[this.cursor_y].substring(this.cursor_x);
-                    this.cursor_x++;
+                    this.typeLetter(e);
                     break;
             }
         }
@@ -717,10 +692,58 @@ class Editor {
         }
     }
 
+    typeLetter(e)
+    {
+        if (e.key.length > 1) return;
+            let change = this.deleteSelection();
+            change.type = "insert";
+            change.key = e.key;
+            if (change.affected_lines.length === 0)
+            {
+                change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                change.selection_after = structuredClone(this.selection);
+                change.affected_lines = [
+                    {
+                        line: this.cursor_y,
+                        before: this.lines[this.cursor_y],
+                        after: null
+                    }
+                ];
+            }
+            this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x) + e.key + this.lines[this.cursor_y].substring(this.cursor_x);
+            this.cursor_x++;
+            change.affected_lines[0].after = this.lines[this.cursor_y];
+            this.pushChange(change);
+    }
+
     pushChange(change) {
+        let merged = false;
         this.changeRecord.splice(this.changeRecord.length - this.changeRecord_index, this.changeRecord_index);
+        if (this.changeRecord[this.changeRecord.length - 1].mergeable)
+        {
+            merged = this.mergeChanges(change);
+        }
+        if (merged) return;
+        // else
+        console.log("Helllllllllllooooooo. It didnt merge!");
         this.changeRecord.push(change);
         this.changeRecord_index = 0;
+    }
+
+    mergeChanges(change) {
+        switch (change.type) {
+            case "insert":
+                return this.mergeInsertion(change);
+        }
+    }
+
+    mergeInsertion(change)
+    {
+        if (/[\s\t]+/.test(change.key)) return false;
+        change.affected_lines[0].before = this.changeRecord[this.changeRecord.length - 1].affected_lines[0].before;
+        change.cursor_before = this.changeRecord[this.changeRecord.length - 1].cursor_before;
+        change.selection_before = this.changeRecord[this.changeRecord.length - 1].selection_before;
+        this.changeRecord[this.changeRecord.length - 1] = change;
     }
 
     canStop(x, y, isSearchingWord) {
@@ -784,8 +807,6 @@ class Editor {
         }
         this.changeRecord_index++;
     }
-
-
 
     deleteSelection()
     {
