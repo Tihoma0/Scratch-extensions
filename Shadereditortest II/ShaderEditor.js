@@ -439,16 +439,24 @@ class Editor {
                     break;
                 }
                 default: {
-                    // TODO: Problem = not this but deleteSelection!!!
                     if (e.key.length > 1) return;
-                    // const line_before = this.lines[this.cursor_y];
                     let change = this.deleteSelection();
                     change.type = "insert";
-                    // this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x) + e.key + this.lines[this.cursor_y].substring(this.cursor_x);
-                    // this.cursor_x++;
-                    // change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
-                    // change.selection_after = structuredClone(this.selection);
-                    // change.affected_lines[0].after = this.lines[this.cursor_y];
+                    if (change.affected_lines.length === 0)
+                    {
+                        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                        change.selection_after = structuredClone(this.selection);
+                        change.affected_lines = [
+                            {
+                                line: this.cursor_y,
+                                before: this.lines[this.cursor_y],
+                                after: null
+                            }
+                        ];
+                    }
+                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x) + e.key + this.lines[this.cursor_y].substring(this.cursor_x);
+                    this.cursor_x++;
+                    change.affected_lines[0].after = this.lines[this.cursor_y];
                     this.pushChange(change);
                     break;
                 }
@@ -535,6 +543,8 @@ class Editor {
                     this.selection.end.y = Math.min(this.lines.length - 1, this.selection.end.y);
                     this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
                     this.selection.end.x = Math.max(0, this.selection.end.x);
+                    this.cursor_y = this.selection.end.y;
+                    this.cursor_x = this.selection.end.x;
                     break;
                 case "ArrowDown":
                     if (!this.has_selection) {
@@ -545,6 +555,8 @@ class Editor {
                     this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
                     this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
                     this.selection.end.x = Math.max(0, this.selection.end.x);
+                    this.cursor_y = this.selection.end.y;
+                    this.cursor_x = this.selection.end.x;
                     break;
                 case "ArrowLeft":
                     if (!this.has_selection) {
@@ -621,6 +633,8 @@ class Editor {
                     this.selection.end.y = Math.min(this.lines.length - 1, this.selection.end.y);
                     this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
                     this.selection.end.x = Math.max(0, this.selection.end.x);
+                    this.cursor_y = this.selection.end.y;
+                    this.cursor_x = this.selection.end.x;
                     break;
                 case "ArrowDown":
                     if (!this.has_selection) {
@@ -631,6 +645,8 @@ class Editor {
                     this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
                     this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
                     this.selection.end.x = Math.max(0, this.selection.end.x);
+                    this.cursor_y = this.selection.end.y;
+                    this.cursor_x = this.selection.end.x;
                     break;
                 case "ArrowLeft": {
                     if (!this.has_selection) {                        
@@ -654,6 +670,8 @@ class Editor {
                     }
                     this.selection.end.x = Math.max(0, x);
                     this.selection.end.y = Math.max(0, y);
+                    this.cursor_y = this.selection.end.y;
+                    this.cursor_x = this.selection.end.x;
                     break;
                 }
                 case "ArrowRight": {
@@ -689,6 +707,8 @@ class Editor {
                     }
                     this.selection.end.x = Math.min(this.lines[y].length, x);
                     this.selection.end.y = Math.min(this.lines.length - 1, y);
+                    this.cursor_y = this.selection.end.y;
+                    this.cursor_x = this.selection.end.x;
                     break;
                 }
                 default:
@@ -798,12 +818,10 @@ class Editor {
                 {
                     changed_lines.push({ line: i, before: this.lines[i], after: null });
                 }
-                this.lines[start.y] = this.lines[start.y].substring(0, start.x);
-                this.lines[end.y] = this.lines[end.y].substring(end.x);
+                this.lines[start.y] = this.lines[start.y].substring(0, start.x) + this.lines[end.y].substring(end.x);
                 changed_lines[0].after = this.lines[start.y];
-                changed_lines[changed_lines.length - 1].after = this.lines[end.y] || null;
-                this.lines.splice(start.y + 1, end.y - start.y - 1);
-                
+                changed_lines[changed_lines.length - 1].after = null;
+                this.lines.splice(start.y + 1, end.y - start.y);
             }
             else
             {
@@ -814,8 +832,6 @@ class Editor {
                 this.lines[start.y] = this.lines[start.y].substring(0, start.x);
                 changed_lines[0].after = this.lines[start.y];
                 this.lines.splice(start.y + 1, end.y - start.y);
-                console.log(changed_lines);
-
             }
         }
 
