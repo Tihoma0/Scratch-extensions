@@ -725,7 +725,6 @@ class Editor {
         }
         if (merged) return;
         // else
-        console.log("Helllllllllllooooooo. It didnt merge!");
         this.changeRecord.push(change);
         this.changeRecord_index = 0;
     }
@@ -735,15 +734,24 @@ class Editor {
             case "insert":
                 return this.mergeInsertion(change);
         }
+        return false;
     }
 
     mergeInsertion(change)
     {
-        if (/[\s\t]+/.test(change.key)) return false;
-        change.affected_lines[0].before = this.changeRecord[this.changeRecord.length - 1].affected_lines[0].before;
-        change.cursor_before = this.changeRecord[this.changeRecord.length - 1].cursor_before;
-        change.selection_before = this.changeRecord[this.changeRecord.length - 1].selection_before;
+        const last = this.changeRecord[this.changeRecord.length - 1];
+        if (!last) return false;
+        console.log(last.cursor_after, change.cursor_before);
+
+        if (last.cursor_after.y !== change.cursor_before.y) return false;
+        if (last.cursor_after.x !== change.cursor_before.x - 1) return false;
+        
+        if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
+        change.affected_lines[0].before = last.affected_lines[0].before;
+        change.cursor_before = last.cursor_before;
+        change.selection_before = last.selection_before;
         this.changeRecord[this.changeRecord.length - 1] = change;
+        return true;
     }
 
     canStop(x, y, isSearchingWord) {
