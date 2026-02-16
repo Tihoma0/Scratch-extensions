@@ -1,0 +1,185 @@
+.container {
+    top: 0;
+    left: 0;
+    position: fixed;
+    width: 40vw;
+    height: 20vw;
+    overflow: hidden;
+    background-color: rgb(15, 15, 15);
+
+    z-index: 1002;
+    border: 8px solid #3b4292;
+    border-radius: 2vw;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none
+}
+
+.menu {
+    position: relative;
+    flex: 0 0 2.6em;
+    padding-left: 0.5vw;
+    background-color: rgb(43, 43, 43);
+    display: flex;
+
+    align-items: center;
+    justify-content: flex-end;
+    box-sizing: border-box;
+}
+
+.menu .close {
+    position: relative;
+    width: 2em;
+    height: 2em;
+    border-radius: 1em;
+    right: 0.3em;
+    background-color: #3b4292;
+    transform: rotate(45deg);
+    transition: transform 0.45s ease-out 0s, background-color 0.25s linear 0s;
+}
+
+.menu .close:hover {
+    transform: rotate(495deg) scale(1.25);
+    background-color: #656dc9;
+}
+
+.menu .close .cross {
+    position: absolute;
+    background-color: rgb(223, 216, 216);
+    border-radius: 0.2em;
+
+}
+
+.menu .close .cross.horizontal {
+    width: 70%;
+    height: 0.4em;
+    left: 15%;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.menu .close .cross.vertical {
+    width: 0.4em;
+    height: 70%;
+    top: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.content {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
+.content .sidebar {
+    position: relative;
+    height: 100%;
+    width: 90px;
+    background-color: rgb(43, 43, 43);
+    overflow-y: auto;
+    overflow-wrap: nowrap;
+}
+
+.content .sidebar .resizeHandle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    border-radius: 2.5px;
+    height: 100%;
+    cursor: ew-resize;
+    background-color: transparent;
+
+}
+
+.content .sidebar .resizeHandle:hover {
+    background-color: rgba(255, 255, 255, 0.063);
+}
+
+.content .sidebar .resizeHandleDragged {
+    background-color: rgba(255, 255, 255, 0.063);
+}
+
+.content .sidebarcollapsed .resizeHandle:hover {
+    background-color: rgba(255, 255, 255, 0.063);
+}
+
+.content .sidebarcollapsed .resizeHandleDragged {
+    background-color: rgba(255, 255, 255, 0.063);
+}
+
+.editor {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    font-family: monospace;
+    font-size: 1em;
+    color: #fff;
+    background-color: rgb(20, 20, 20);
+    padding: 0.5em;
+}
+
+.editor .editorArea {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    outline: none;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+.sidebarcollapsed {
+    position: relative;
+    height: 100%;
+    background-color: rgb(43, 43, 43);
+}
+
+.sidebarcollapsed * {
+    display: none;
+}
+
+.resizeHandle {
+    display: block;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    border-radius: 2.5px;
+    height: 100%;
+    cursor: ew-resize;
+    background-color: #f00;
+}
+
+.content .sidebar * {
+    width: 100%;
+    height: 1.2em;
+    font-size: 1em;
+    color: #fff;
+    background-color: rgb(43, 43, 43);
+    transition: background-color 0.25s linear 0s;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    text-wrap: nowrap;
+}
+
+.content .sidebar *:hover {
+    background-color: rgb(74, 74, 74);
+}
+
+.editor .editorArea .keyword {
+    color: #ff8282;
+}
+
