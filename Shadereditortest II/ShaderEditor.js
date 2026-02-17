@@ -690,7 +690,7 @@ class Editor {
                         this.has_selection = false;
                     }
                     this.selection.end.y = Math.max(0, this.selection.end.y - 1);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, math.max(this.selection.end.x, this.preferred_cursor_x));
+                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, Math.max(this.selection.end.x, this.preferred_cursor_x));
                     this.selection.end.x = Math.max(0, this.selection.end.x);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
@@ -701,7 +701,7 @@ class Editor {
                         this.has_selection = false;
                     }
                     this.selection.end.y = Math.min(this.lines.length - 1, this.selection.end.y + 1);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, math.max(this.selection.end.x, this.preferred_cursor_x));
+                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, Math.max(this.selection.end.x, this.preferred_cursor_x));
                     this.selection.end.x = Math.max(0, this.selection.end.x);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
@@ -730,6 +730,7 @@ class Editor {
                     this.selection.end.y = Math.max(0, y);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 }
                 case "ArrowRight": {
@@ -767,12 +768,14 @@ class Editor {
                     this.selection.end.y = Math.min(this.lines.length - 1, y);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 }
                 default:
                     break;
             }
         }
+        this.autoScroll();
     }
 
     typeLetter(e)
@@ -806,6 +809,15 @@ class Editor {
         else {
             return this.lines[y][x] === " " || x == this.lines[y].length -1;
         }
+    }
+
+    autoScroll()
+    {
+        if (this.cursor_y - 2 < this.scroll_y/this.line_height) this.scroll_y = (this.cursor_y - 2) * this.line_height;
+        if (this.cursor_y + 7 > (this.scroll_y + this.viewport_height - 7)/this.line_height) this.scroll_y = (this.cursor_y + 7) * this.line_height - this.viewport_height;
+        if (isNaN(this.scroll_y)) this.scroll_y = 0;
+        this.scroll_y = Math.max(0, this.scroll_y)
+        console.log(this.scroll_y);
     }
 
     deleteSelection()
@@ -1140,7 +1152,6 @@ class Editor {
         this.ctx.fillRect(x, this.cursor_y * this.line_height + this.line_height + 5  - this.scroll_y, this.cursor_width, -this.character_height - 5);
     }
 
-
     drawLineNumbers() {
         this.ctx.fillStyle = "#777777ff";
         let start_y = Math.floor(this.scroll_y/this.line_height);
@@ -1205,6 +1216,13 @@ class Editor {
             this.ctx.fillText(this.menuItems[i].text, 5, i * 25 + 36);
         }
     }
+
+    //#########################################################################
+    //                         MAINLOOP FUNCTIONS
+    //#########################################################################
+
+
+   
 
     update() {
         this.ordered_selection = { start: this.selection.start, end: this.selection.end };
