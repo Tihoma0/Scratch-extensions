@@ -81,8 +81,14 @@ class Editor {
             }
         }
 
+        this.scroll_x = 0;
+        this.scroll_y = 0;
+
+        this.viewport_height = 0;
+        this.viewport_width = 0;
 
         this.menu_width = 100;
+        this.editor_x_offset = 15;
 
         this.mouseX = 0;
         this.mouseY = 0;
@@ -118,16 +124,26 @@ class Editor {
         this.mouseButtons = [false, false, false];
         this.mouseClicked = [false, false, false];
 
+        this.canvas.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            if (this.is_shift)
+                this.scroll_x += e.deltaY;
+            else
+                this.scroll_y += e.deltaY / 2;
+            this.scroll_x = Math.max(0, this.scroll_x);
+            this.scroll_y = Math.max(0, this.scroll_y);
+        });
+
         this.canvas.addEventListener('mousedown', (e) => {
             
             this.mouseButtons[e.button] = true;
             this.mouseClicked[e.button] = true;
             if (e.x < this.menu_width) return;
             this.is_selecting = true;
-            let line = Math.floor(e.offsetY / this.line_height);
+            let line = Math.floor((e.offsetY + this.scroll_y) / this.line_height);
             if (line >= this.lines.length) line = this.lines.length - 1;
             if (line < 0) line = 0;
-            let col = Math.round((e.offsetX - this.menu_width - 5) / this.character_width);
+            let col = Math.round((e.offsetX - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
             line = Math.min(this.lines.length - 1, line);
             line = Math.max(0, line);
             col = Math.min(this.lines[line].length, col);
@@ -158,8 +174,6 @@ class Editor {
         window.visualViewport.addEventListener('resize', () => this.resize());
         window.visualViewport.addEventListener('scroll', () => this.resize());
 
-        
-
         this.resize();
     }
 
@@ -173,6 +187,9 @@ class Editor {
         this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this.ctx.font = this.font;
         this.character_width = this.ctx.measureText('x').width;
+        this.viewport_height = Number(vv.height);
+        this.viewport_width = Number(vv.width);
+        console.log(this.viewport_height, "Resioze");
     }
 
 
@@ -201,11 +218,15 @@ class Editor {
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
                     this.cursor_x--;
-                    if (this.cursor_x < 0){
+                    
+                    if (this.cursor_x < 0 && this.cursor_y > 0){
                         this.cursor_y--;
                         this.cursor_x = this.lines[this.cursor_y].length;
                         if (this.cursor_y < 0) this.cursor_y = 0;
                     }
+                    if (this.cursor_x <= -1)
+                        this.cursor_x = 0;
+                    
                     break;
                 case "ArrowRight":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
@@ -651,7 +672,7 @@ class Editor {
                     break;
                 }
                 case "ArrowRight": {
-                    if (!this.has_selection) {                        
+                    if (!this.has_selection) {
                         this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                         this.has_selection = true;
                     }
@@ -895,7 +916,7 @@ class Editor {
                 changed_lines[0].after = this.lines[start.y];
                 this.lines.splice(start.y + 1, end.y - start.y);
             }
-        }        
+        }
 
         this.cursor_x = this.selection.start.x = this.selection.end.x = start.x;
         this.cursor_y = this.selection.start.y = this.selection.end.y = start.y;
@@ -927,7 +948,8 @@ class Editor {
 
     cut() {
         this.copy();
-        this.deleteSelection();
+        const change = this.deleteSelection();
+        this.pushChange(change);
     }
 
     async paste() {
@@ -973,12 +995,14 @@ class Editor {
         }
     }
 
-
-
     render() {
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);        
-        for (let i = 0; i < this.lines.length; i++) {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        let start_y = Math.floor(this.scroll_y/this.line_height);
+        let end_y = Math.ceil((this.scroll_y + this.viewport_height)/this.line_height)
+        end_y = Math.min(this.lines.length, end_y);
+        
+        for (let i = start_y; i < end_y; i++) {
             const tokens = [];
             for (const m of this.lines[i].matchAll(/\s+|[()]+|[,]+|(?:\d+\.\d+)|\d+|[a-zA-Z_]\w*|\.|[^()\s,]+/g)) {
                 tokens.push({
@@ -987,20 +1011,19 @@ class Editor {
                     end: m.index + m[0].length
                 });
             }
-
-            let x = this.menu_width + 5;
+            let x = this.menu_width + this.editor_x_offset - this.scroll_x;
             for (let j = 0; j < tokens.length; j++) {
                 const token = tokens[j].text;
                 const token_width = token.length * this.character_width;
                 this.ctx.fillStyle = this.getSyntacColor(token);
-                this.ctx.fillText(token, x, this.line_height * i + this.line_height);
+                this.ctx.fillText(token, x, this.line_height * i + this.line_height - this.scroll_y);
                 x += token_width;
             }
-
         }
-        this.drawMenu();
+        this.drawLineNumbers();
         this.drawSelection();
         this.drawCursor();
+        this.drawMenu();
     }
 
     getSyntacColor(token) {                  
@@ -1047,15 +1070,24 @@ class Editor {
     drawCursor() {
         if (this.cursor_blink > 1) return;
         this.ctx.fillStyle = this.cursor_color;
-        let x = this.cursor_x * this.character_width + this.menu_width + 5 - this.cursor_width / 2;
-        this.ctx.fillRect(x, this.cursor_y * this.line_height + this.line_height + 5, this.cursor_width, -this.character_height - 5);
+        let x = this.cursor_x * this.character_width + this.menu_width + this.editor_x_offset - this.cursor_width / 2 - this.scroll_x;
+        this.ctx.fillRect(x, this.cursor_y * this.line_height + this.line_height + 5  - this.scroll_y, this.cursor_width, -this.character_height - 5);
+    }
+
+
+    drawLineNumbers() {
+        this.ctx.fillStyle = "#777777ff";
+        for (let i = 0; i < this.lines.length; i++) {
+            const element = this.lines[i];
+            this.ctx.fillText(i+1, this.menu_width, this.line_height * i + this.line_height - this.scroll_y);
+        }
     }
 
     setCursor(x, y) {
-        let line = Math.floor(y / this.line_height);
+        let line = Math.floor((y + this.scroll_y) / this.line_height);
         if (line >= this.lines.length) line = this.lines.length - 1;
         if (line < 0) line = 0;
-        let col = Math.round((x - this.menu_width - 5) / this.character_width);
+        let col = Math.round((x - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
         line = Math.min(this.lines.length - 1, line);
         line = Math.max(0, line);
         col = Math.min(this.lines[line].length, col);
@@ -1091,15 +1123,15 @@ class Editor {
             }
             if (this.lines[y].length == 0) width = 3;
             
-            this.ctx.fillRect(this.menu_width + 5 + start, y * this.line_height + this.line_spacing + 3, width, this.character_height);
+            this.ctx.fillRect(this.menu_width + this.editor_x_offset + start - this.scroll_x, y * this.line_height + this.line_spacing + 3  - this.scroll_y, width, this.character_height);
         }
     }
 
     findSelection(x, y) {
-        let line = Math.floor(y / this.line_height);
+        let line = Math.floor((y + this.scroll_y) / this.line_height);
         if (line >= this.lines.length) line = this.lines.length - 1;
         if (line < 0) line = 0;
-        let col = Math.round((x - this.menu_width - 5) / this.character_width);
+        let col = Math.round((x - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
         line = Math.min(this.lines.length - 1, line);
         line = Math.max(0, line);
         col = Math.min(this.lines[line].length, col);
@@ -1138,7 +1170,7 @@ class Editor {
             this.ordered_selection.start = this.ordered_selection.end;
             this.ordered_selection.end = temp;
         }
-
+        this.editor_x_offset = Math.max(this.character_width*2 + 5, Math.ceil(Math.log10(this.lines.length + 1)) * this.character_width + this.character_width + 5); // well that is quite a function....
         this.updateMenu();
         this.has_selection = this.selection.start.x != this.selection.end.x || this.selection.start.y != this.selection.end.y;
         this.mouseClicked = [false, false, false];
