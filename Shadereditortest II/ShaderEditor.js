@@ -30,7 +30,6 @@ class Editor {
                 text: "Run",
                 onClick: () => {
                     console.log("sdfsdfsdfsdfsdfd");
-                    
                 }
             }
         ]
@@ -190,7 +189,6 @@ class Editor {
         this.character_width = this.ctx.measureText('x').width;
         this.viewport_height = Number(vv.height);
         this.viewport_width = Number(vv.width);
-        console.log(this.viewport_height, "Resioze");
     }
 
     //#########################################################################
@@ -217,7 +215,6 @@ class Editor {
 
     typeKey(e) {
         this.cursor_blink = 0;
-        console.log(e.key);
         if (e.ctrlKey) this.is_ctrl = true;
         if (e.shiftKey) this.is_shift = true;
         if (!this.is_ctrl && !this.is_shift)
@@ -318,8 +315,27 @@ class Editor {
                         }
                         else {
                             if (this.lines[this.cursor_y].substring(this.cursor_x - this.tab_size, this.cursor_x) === this.tab_string) {
+                                const line_before = this.lines[this.cursor_y];
+                                const cursor_before = { x: this.cursor_x, y: this.cursor_y };
+                                const selection_before = structuredClone(this.selection);
                                 this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - this.tab_size) + this.lines[this.cursor_y].substring(this.cursor_x);
                                 this.cursor_x -= this.tab_size;
+                                const change = {
+                                    type: "backspace-tab",
+                                    mergeable: false,
+                                    cursor_before,
+                                    cursor_after: { x: this.cursor_x, y: this.cursor_y },
+                                    selection_before,
+                                    selection_after: structuredClone(this.selection),
+                                    affected_lines: [
+                                        {
+                                            line: this.cursor_y,
+                                            before: line_before,
+                                            after: this.lines[this.cursor_y]
+                                        }
+                                    ]
+                                };
+                                this.pushChange(change);
                             }
                             else  {
                                 const line_before = this.lines[this.cursor_y];
@@ -418,18 +434,69 @@ class Editor {
                             after: null
                         }
                     );
-                    const text_behind = this.lines[this.cursor_y].substring(this.cursor_x);
-                    this.lines.splice(this.cursor_y + 1, 0, text_behind);
-                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x);
-                    this.cursor_y++;
-                    this.cursor_x = 0;
-                    change.type = "insert-line";
-                    change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
-                    change.selection_after = structuredClone(this.selection);
-                    change.affected_lines[0].after = this.lines[this.cursor_y - 1];
-                    change.affected_lines[1].after = this.lines[this.cursor_y];
-                    this.pushChange(change);
-                    this.preferred_cursor_x = this.cursor_x;
+                    if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x] && /[\)\}\]\>]/.test(this.lines[this.cursor_y][this.cursor_x]))
+                    {
+                        let indent = 0;
+                        while (indent < this.lines[this.cursor_y].length && this.lines[this.cursor_y][indent] == " ")
+                        {
+                            indent++;
+                        }                        
+                        const text_behind = this.lines[this.cursor_y].substring(this.cursor_x);
+                        this.lines.splice(this.cursor_y + 1, 0, " ".repeat(indent) + text_behind);
+                        this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x);
+                        this.cursor_y++;
+                        this.cursor_x = 0;
+                        change.type = "insert-bracket-lines";
+                        change.mergeable = false;
+                        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                        change.affected_lines[0].after = this.lines[this.cursor_y - 1];
+                        change.affected_lines[1].after = this.lines[this.cursor_y];
+                        change.affected_lines.splice(2, 0, { line: this.cursor_y + 1, before: null, after: "" });
+                        this.lines.splice(this.cursor_y, 0, " ".repeat(indent) + this.tab_string);
+                        this.cursor_x = indent + this.tab_size;
+                        this.pushChange(change);
+                        this.preferred_cursor_x = this.cursor_x;
+                    }
+                    else if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x-1] && /[\(\{\[\<]/.test(this.lines[this.cursor_y][this.cursor_x-1]))
+                    {
+                        let indent = 0;
+                        while (indent < this.lines[this.cursor_y].length && this.lines[this.cursor_y][indent] == " ")
+                        {
+                            indent++;
+                        }                        
+                        const text_behind = this.lines[this.cursor_y].substring(this.cursor_x);
+                        this.lines.splice(this.cursor_y + 1, 0, " ".repeat(indent) + this.tab_string+text_behind);
+                        this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x);
+                        this.cursor_y++;
+                        this.cursor_x = 0;
+                        change.type = "insert-bracket-lines";
+                        change.mergeable = false;
+                        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                        change.affected_lines[0].after = this.lines[this.cursor_y - 1];
+                        change.affected_lines[1].after = this.lines[this.cursor_y];
+                        this.cursor_x = indent + this.tab_size;
+                        this.pushChange(change);
+                        this.preferred_cursor_x = this.cursor_x;
+                    }
+                    else {
+                        let indent = 0;
+                        while (indent < this.lines[this.cursor_y].length && this.lines[this.cursor_y][indent] == " ")
+                        {
+                            indent++;
+                        }
+                        const text_behind = this.lines[this.cursor_y].substring(this.cursor_x);
+                        this.lines.splice(this.cursor_y + 1, 0, " ".repeat(indent) + text_behind);
+                        this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x);
+                        this.cursor_y++;
+                        this.cursor_x = indent;
+                        change.type = "insert-line";
+                        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                        change.selection_after = structuredClone(this.selection);
+                        change.affected_lines[0].after = this.lines[this.cursor_y - 1];
+                        change.affected_lines[1].after = this.lines[this.cursor_y];
+                        this.pushChange(change);
+                        this.preferred_cursor_x = this.cursor_x;
+                    }
                     break;
                 case "Tab":{
                     e.preventDefault();
@@ -437,61 +504,11 @@ class Editor {
                     let start = this.ordered_selection.start;
                     if (end.y - start.y >= 1)
                     {
-                        let change = {
-                            type: "multi-tab",
-                            mergeable: false,
-                            cursor_before: { x: this.cursor_x, y: this.cursor_y },
-                            cursor_after: null,
-                            selection_before: structuredClone(this.selection),
-                            selection_after: null,
-                            affected_lines: [],
-                        }
-                        for (let i = start.y; i <= end.y; i++)
-                        {
-                            change.affected_lines.push(
-                                {
-                                    line: i,
-                                    before: this.lines[i],
-                                    after: null
-                                }
-                            )
-                            this.lines[i] = this.tab_string + this.lines[i];
-                            change.affected_lines[i - start.y].after = this.lines[i];
-                        }
-                        this.cursor_x += this.tab_size;
-                        this.ordered_selection.end.x += this.tab_size;
-                        this.selection = { start: this.ordered_selection.start, end: this.ordered_selection.end };
-                        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
-                        change.selection_after = structuredClone(this.selection);
-                        this.pushChange(change);
+                        this.typeMultipleTabs();
                     }
                     else {
-                        this.selection.end.x += this.tab_size;
-                        this.selection.start.x += this.tab_size;
-                        let change = {
-                            type: "tab",
-                            mergeable: false,
-                            cursor_before: { x: this.cursor_x, y: this.cursor_y },
-                            cursor_after: null,
-                            selection_before: structuredClone(this.selection),
-                            selection_after: null,
-                            affected_lines: [
-                                {
-                                    line: this.cursor_y,
-                                    before: this.lines[this.cursor_y],
-                                    after: null
-                                }
-                            ]
-                        }
-                        this.lines[this.cursor_y] = this.tab_string + this.lines[this.cursor_y]; 
-                        this.cursor_x += this.tab_size;
-                        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
-                        change.selection_after = structuredClone(this.selection);
-                        change.affected_lines[change.affected_lines.length - 1].after = this.lines[this.cursor_y];
-                        this.pushChange(change);
+                        this.typeSingleTab();
                     }
-                    this.preferred_cursor_x = this.cursor_x;
-
                     break;
                 }
                 default: 
@@ -590,6 +607,9 @@ class Editor {
                     this.has_selection = false;
                     this.cursor_y = Math.min(this.lines.length - 1, this.cursor_y + 10);
                     this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
+                    break;
+                default: 
+                    this.typeLetter(e);
                     break;
             }
         }
@@ -771,11 +791,83 @@ class Editor {
                     this.preferred_cursor_x = this.cursor_x;
                     break;
                 }
-                default:
+                default: 
+                    this.typeLetter(e);
                     break;
             }
         }
+        switch (e.key)
+        {
+            case "Shift":
+            case "Control":
+            case "Meta":
+            case "Alt":
+            case "AltGraph":
+                return;
+        }
+        if (e.key.length > 1 && e.key.startsWith("F"))
+            return;
         this.autoScroll();
+    }
+
+    typeSingleTab()
+    {
+        this.selection.end.x += this.tab_size;
+        this.selection.start.x += this.tab_size;
+        let change = {
+            type: "tab",
+            mergeable: false,
+            cursor_before: { x: this.cursor_x, y: this.cursor_y },
+            cursor_after: null,
+            selection_before: structuredClone(this.selection),
+            selection_after: null,
+            affected_lines: [
+                {
+                    line: this.cursor_y,
+                    before: this.lines[this.cursor_y],
+                    after: null
+                }
+            ]
+        }
+        this.lines[this.cursor_y] = this.tab_string + this.lines[this.cursor_y]; 
+        this.cursor_x += this.tab_size;
+        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+        change.selection_after = structuredClone(this.selection);
+        change.affected_lines[change.affected_lines.length - 1].after = this.lines[this.cursor_y];
+        this.pushChange(change);
+        this.preferred_cursor_x = this.cursor_x;
+    }
+
+    typeMultipleTabs() {
+        let end = this.ordered_selection.end;
+        let start = this.ordered_selection.start;
+        let change = {
+            type: "multi-tab",
+            mergeable: false,
+            cursor_before: { x: this.cursor_x, y: this.cursor_y },
+            cursor_after: null,
+            selection_before: structuredClone(this.selection),
+            selection_after: null,
+            affected_lines: [],
+        }
+        for (let i = start.y; i <= end.y; i++)
+        {
+            change.affected_lines.push(
+                {
+                    line: i,
+                    before: this.lines[i],
+                    after: null
+                }
+            )
+            this.lines[i] = this.tab_string + this.lines[i];
+            change.affected_lines[i - start.y].after = this.lines[i];
+        }
+        this.cursor_x += this.tab_size;
+        this.ordered_selection.end.x += this.tab_size;
+        this.selection = { start: this.ordered_selection.start, end: this.ordered_selection.end };
+        change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+        change.selection_after = structuredClone(this.selection);
+        this.pushChange(change);
     }
 
     typeLetter(e)
@@ -800,6 +892,44 @@ class Editor {
             this.cursor_x++;
             change.affected_lines[0].after = this.lines[this.cursor_y];
             this.pushChange(change);
+        switch (e.key) {
+            case "{":
+                this.autoType("}");
+                break;
+            case "(":
+                this.autoType(")");
+                break;
+            case "[":
+                this.autoType("]");
+                break;
+            case "<":
+                this.autoType(">");
+                break;
+        }
+    }
+
+    autoType(key)
+    {        
+        if (this.lines[this.cursor_y][this.cursor_x] && !/[\s]+|[\(\)\{\}\[\]\<\>]/.test(this.lines[this.cursor_y][this.cursor_x])) return;        
+        if (key.length > 1) return;
+            let change = this.deleteSelection();
+            change.type = "insert";
+            change.key = key;
+            if (change.affected_lines.length === 0)
+            {
+                change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                change.selection_after = structuredClone(this.selection);
+                change.affected_lines = [
+                    {
+                        line: this.cursor_y,
+                        before: this.lines[this.cursor_y],
+                        after: null
+                    }
+                ];
+            }
+            this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x) + key + this.lines[this.cursor_y].substring(this.cursor_x);
+            change.affected_lines[0].after = this.lines[this.cursor_y];
+            this.pushChange(change);
     }
 
     canStop(x, y, isSearchingWord) {
@@ -812,12 +942,15 @@ class Editor {
     }
 
     autoScroll()
-    {
+    {        
         if (this.cursor_y - 2 < this.scroll_y/this.line_height) this.scroll_y = (this.cursor_y - 2) * this.line_height;
-        if (this.cursor_y + 7 > (this.scroll_y + this.viewport_height - 7)/this.line_height) this.scroll_y = (this.cursor_y + 7) * this.line_height - this.viewport_height;
+        if (this.cursor_y + 7 > (this.scroll_y + this.viewport_height)/this.line_height) this.scroll_y = (this.cursor_y + 7) * this.line_height - this.viewport_height;
         if (isNaN(this.scroll_y)) this.scroll_y = 0;
         this.scroll_y = Math.max(0, this.scroll_y)
-        console.log(this.scroll_y);
+        if (this.cursor_x + 20 > (this.viewport_width - this.menu_width - this.editor_x_offset) / this.character_width) this.scroll_x = (this.cursor_x + 20) * this.character_width - this.viewport_width + this.menu_width + this.editor_x_offset;
+        if (this.cursor_x - 2 < this.scroll_x/this.character_width) this.scroll_x = (this.cursor_x - 2) * this.character_width;
+        if (isNaN(this.scroll_x)) this.scroll_x = 0;
+        this.scroll_x = Math.max(0, this.scroll_x)
     }
 
     deleteSelection()
@@ -837,10 +970,7 @@ class Editor {
         let changed_lines = [];
 
         let cursor = { x: this.cursor_x, y: this.cursor_y };
-        let selection = structuredClone(this.selection);
-
-        console.log("Selectiondelete");
-        
+        let selection = structuredClone(this.selection);        
         if (start.y == end.y) {
             changed_lines.push({ line: start.y, before: this.lines[start.y], after: null });
             this.lines[start.y] = this.lines[start.y].substring(0, start.x) + this.lines[start.y].substring(end.x);
@@ -974,8 +1104,6 @@ class Editor {
     }
 
     undo() {
-        console.log(this.changeRecord);
-
         const record = this.changeRecord[this.changeRecord.length - 1 - this.changeRecord_index];
         if (!record) return;
         
@@ -1027,7 +1155,6 @@ class Editor {
     }
 
     mergeChanges(change) {
-        console.log(change.type);
         switch (change.type) {
             case "insert":
                 return this.mergeInsertion(change);
@@ -1043,9 +1170,7 @@ class Editor {
         const last = this.changeRecord[this.changeRecord.length - 1];
         if (!last) return false;
         if (last.cursor_after.y !== change.cursor_before.y) return false;
-        if (last.cursor_after.x !== change.cursor_before.x) return false;
-        console.log(change.key, last.key);
-        
+        if (last.cursor_after.x !== change.cursor_before.x) return false;        
         if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
         change.affected_lines[0].before = last.affected_lines[0].before;
         change.cursor_before = last.cursor_before;
