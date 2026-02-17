@@ -246,7 +246,7 @@ class Editor {
                         if (this.cursor_x == 0) {
                             if (this.cursor_y == 0) return;
                             let change = {
-                                type: "delete-line",
+                                type: "backspace-line",
                                 mergeable: false,
                                 cursor_before: { x: this.cursor_x, y: this.cursor_y },
                                 cursor_after: null,
@@ -276,10 +276,12 @@ class Editor {
                                 const line_before = this.lines[this.cursor_y];
                                 const cursor_before = { x: this.cursor_x, y: this.cursor_y };
                                 const selection_before = structuredClone(this.selection);
+                                const char = this.lines[this.cursor_y][this.cursor_x-1];
                                 this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - 1) + this.lines[this.cursor_y].substring(this.cursor_x);
                                 this.cursor_x--;
                                 const change = {
-                                    type: "delete-char",
+                                    type: "backspace-char",
+                                    key: char,
                                     mergeable: true,
                                     cursor_before,
                                     cursor_after: { x: this.cursor_x, y: this.cursor_y },
@@ -293,9 +295,7 @@ class Editor {
                                         }
                                     ]
                                 };
-
                                 this.pushChange(change);
-
                             }
                         }
                     } else {
@@ -330,8 +330,9 @@ class Editor {
                         }
                         else {
                             let change = {
-                                type: "delete-line",
-                                mergeable: false,
+                                type: "delete-char",
+                                mergeable: true,
+                                key: this.lines[this.cursor_y][this.cursor_x],
                                 cursor_before: { x: this.cursor_x, y: this.cursor_y },
                                 cursor_after: null,
                                 selection_before: structuredClone(this.selection),
@@ -718,34 +719,62 @@ class Editor {
 
     pushChange(change) {
         let merged = false;
-        this.changeRecord.splice(this.changeRecord.length - this.changeRecord_index, this.changeRecord_index);
-        if (this.changeRecord[this.changeRecord.length - 1].mergeable)
-        {
+
+        const last = this.changeRecord[this.changeRecord.length - 1];
+
+        if (last && last.mergeable) {
             merged = this.mergeChanges(change);
         }
+
+        if (merged) return;
+
         if (merged) return;
         // else
+        if (this.changeRecord_index > 0) {
+            this.changeRecord.splice(
+                this.changeRecord.length - this.changeRecord_index,
+                this.changeRecord_index
+            );
+        }
+        this.changeRecord.splice(this.changeRecord.length - this.changeRecord_index, this.changeRecord_index);
         this.changeRecord.push(change);
         this.changeRecord_index = 0;
     }
 
     mergeChanges(change) {
+        console.log(change.type);
         switch (change.type) {
             case "insert":
                 return this.mergeInsertion(change);
+            case "delete-char":
+            case "backspace-char":
+                return this.mergeDeletion(change);
         }
         return false;
+    }
+
+    mergeDeletion(change)
+    {
+        const last = this.changeRecord[this.changeRecord.length - 1];
+        if (!last) return false;
+        if (last.cursor_after.y !== change.cursor_before.y) return false;
+        if (last.cursor_after.x !== change.cursor_before.x) return false;
+        console.log(change.key, last.key);
+        
+        if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
+        change.affected_lines[0].before = last.affected_lines[0].before;
+        change.cursor_before = last.cursor_before;
+        change.selection_before = last.selection_before;
+        this.changeRecord[this.changeRecord.length - 1] = change;
+        return true;
     }
 
     mergeInsertion(change)
     {
         const last = this.changeRecord[this.changeRecord.length - 1];
         if (!last) return false;
-        console.log(last.cursor_after, change.cursor_before);
-
         if (last.cursor_after.y !== change.cursor_before.y) return false;
         if (last.cursor_after.x !== change.cursor_before.x - 1) return false;
-        
         if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
         change.affected_lines[0].before = last.affected_lines[0].before;
         change.cursor_before = last.cursor_before;
@@ -790,9 +819,11 @@ class Editor {
     }
 
     undo() {
+        console.log(this.changeRecord);
+
         const record = this.changeRecord[this.changeRecord.length - 1 - this.changeRecord_index];
         if (!record) return;
-
+        
         this.cursor_x = record.cursor_before.x;
         this.cursor_y = record.cursor_before.y;
         this.selection = structuredClone(record.selection_before);
@@ -835,6 +866,8 @@ class Editor {
         let cursor = { x: this.cursor_x, y: this.cursor_y };
         let selection = structuredClone(this.selection);
 
+        console.log("Selectiondelete");
+        
         if (start.y == end.y) {
             changed_lines.push({ line: start.y, before: this.lines[start.y], after: null });
             this.lines[start.y] = this.lines[start.y].substring(0, start.x) + this.lines[start.y].substring(end.x);
@@ -862,7 +895,7 @@ class Editor {
                 changed_lines[0].after = this.lines[start.y];
                 this.lines.splice(start.y + 1, end.y - start.y);
             }
-        }
+        }        
 
         this.cursor_x = this.selection.start.x = this.selection.end.x = start.x;
         this.cursor_y = this.selection.start.y = this.selection.end.y = start.y;
