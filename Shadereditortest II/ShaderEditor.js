@@ -97,6 +97,7 @@ class Editor {
         this.is_shift = false;
 
         this.cursor_x = 0;
+        this.preferred_cursor_x = 0;
         this.cursor_y = 0;
         this.cursor_width = 2;
         this.cursor_height = 14;
@@ -140,25 +141,23 @@ class Editor {
             this.mouseClicked[e.button] = true;
             if (e.x < this.menu_width) return;
             this.is_selecting = true;
-            let line = Math.floor((e.offsetY + this.scroll_y) / this.line_height);
+            let line = Math.floor((e.y + this.scroll_y) / this.line_height);
             if (line >= this.lines.length) line = this.lines.length - 1;
             if (line < 0) line = 0;
-            let col = Math.round((e.offsetX - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
+            let col = Math.round((e.x - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
             line = Math.min(this.lines.length - 1, line);
             line = Math.max(0, line);
             col = Math.min(this.lines[line].length, col);
-            col = Math.max(0, col);
-
-
+            col = Math.max(0, col);        
+            const cursorxbef = this.cursor_x;
+            const cursorybef = this.cursor_y;
+            this.cursor_y = line;
+            this.cursor_x = col;
+            this.preferred_cursor_x = col;
             this.selection.start.y = line;
             this.selection.start.x = col;
             this.selection.end.y = line;
             this.selection.end.x = col;
-
-
-            const cursorxbef = this.cursor_x;
-            const cursorybef = this.cursor_y;
-            this.setCursor(e.offsetX, e.offsetY);
             if (cursorxbef != this.cursor_x || cursorybef != this.cursor_y) this.cursor_blink = 0;
         });
         this.canvas.addEventListener('mouseup', (e) => {
@@ -177,6 +176,8 @@ class Editor {
         this.resize();
     }
 
+    
+
     resize() {
         const vv = window.visualViewport;
         const dpr = window.devicePixelRatio || 1;
@@ -192,6 +193,27 @@ class Editor {
         console.log(this.viewport_height, "Resioze");
     }
 
+    //#########################################################################
+    //                    CURSOR + SELECTION
+    //#########################################################################
+
+    findSelection(x, y) {
+        let line = Math.floor((y + this.scroll_y) / this.line_height);
+        if (line >= this.lines.length) line = this.lines.length - 1;
+        if (line < 0) line = 0;
+        let col = Math.round((x - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
+        line = Math.min(this.lines.length - 1, line);
+        line = Math.max(0, line);
+        col = Math.min(this.lines[line].length, col);
+        col = Math.max(0, col);
+        this.selection.end = { x: col, y: line };
+    }
+
+
+    //#########################################################################
+    //                    EDITING + HISTORY MANAGEMENT
+    //#########################################################################
+
 
     typeKey(e) {
         this.cursor_blink = 0;
@@ -206,13 +228,13 @@ class Editor {
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
                     this.cursor_y = Math.max(0, this.cursor_y - 1);
-                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, this.cursor_x);
+                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
                     break;
                 case "ArrowDown":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
                     this.cursor_y = Math.min(this.lines.length - 1, this.cursor_y + 1);
-                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, this.cursor_x);
+                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
                     break;
                 case "ArrowLeft":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
@@ -226,7 +248,7 @@ class Editor {
                     }
                     if (this.cursor_x <= -1)
                         this.cursor_x = 0;
-                    
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "ArrowRight":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
@@ -241,26 +263,31 @@ class Editor {
                             this.cursor_x = this.lines[this.cursor_y].length;
                         }
                     }
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "Home":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
                     this.cursor_x = 0;
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "End":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
                     this.cursor_x = this.lines[this.cursor_y].length;
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "PageUp":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
                     this.cursor_y = Math.max(0, this.cursor_y - 10);
+                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
                     break;
                 case "PageDown":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
                     this.cursor_y = Math.min(this.lines.length - 1, this.cursor_y + 10);
+                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
                     break;
                 case "Backspace":
                     if (this.selection.start.y == this.selection.end.y && this.selection.start.x == this.selection.end.x) {
@@ -282,6 +309,7 @@ class Editor {
                             this.lines.splice(this.cursor_y - 1, 1);
                             this.cursor_y--;
                             this.cursor_x = line.length;
+                            this.preferred_cursor_x = this.cursor_x;
                             this.lines[this.cursor_y] = line + this.lines[this.cursor_y];
                             change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
                             change.selection_after = structuredClone(this.selection);
@@ -324,6 +352,8 @@ class Editor {
                         this.changeRecord.splice(this.changeRecord.length - this.changeRecord_index, this.changeRecord_index);
                         this.pushChange(change);
                     }
+                    this.preferred_cursor_x = this.cursor_x;
+
                     break;
                 case "Delete":
                     if (this.selection.start.y == this.selection.end.y && this.selection.start.x == this.selection.end.x) {
@@ -372,6 +402,7 @@ class Editor {
                         const change = this.deleteSelection();
                         this.pushChange(change);
                     }
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "Enter":
                     let change = this.deleteSelection();
@@ -398,12 +429,12 @@ class Editor {
                     change.affected_lines[0].after = this.lines[this.cursor_y - 1];
                     change.affected_lines[1].after = this.lines[this.cursor_y];
                     this.pushChange(change);
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "Tab":{
                     e.preventDefault();
                     let end = this.ordered_selection.end;
                     let start = this.ordered_selection.start;
-                    
                     if (end.y - start.y >= 1)
                     {
                         let change = {
@@ -435,6 +466,8 @@ class Editor {
                         this.pushChange(change);
                     }
                     else {
+                        this.selection.end.x += this.tab_size;
+                        this.selection.start.x += this.tab_size;
                         let change = {
                             type: "tab",
                             mergeable: false,
@@ -457,6 +490,8 @@ class Editor {
                         change.affected_lines[change.affected_lines.length - 1].after = this.lines[this.cursor_y];
                         this.pushChange(change);
                     }
+                    this.preferred_cursor_x = this.cursor_x;
+
                     break;
                 }
                 default: 
@@ -484,7 +519,7 @@ class Editor {
                 case "y":
                     this.redo();
                     break;
-                    case "ArrowLeft": {
+                case "ArrowLeft": {
                     let x = this.cursor_x;
                     let y = this.cursor_y;
                     const mode = this.lines[y][x-1] === " ";
@@ -502,6 +537,7 @@ class Editor {
                     }
                     this.cursor_x = Math.max(0, x);
                     this.cursor_y = Math.max(0, y);
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 }
                 case "ArrowRight": {
@@ -528,8 +564,33 @@ class Editor {
                     }
                     this.cursor_x = Math.min(this.lines[y].length, x);
                     this.cursor_y = Math.min(this.lines.length - 1, y);
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 }
+                case "Home":
+                    this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
+                    this.has_selection = false;
+                    this.cursor_x = 0;
+                    this.preferred_cursor_x = this.cursor_x;
+                    break;
+                case "End":
+                    this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
+                    this.has_selection = false;
+                    this.cursor_x = this.lines[this.cursor_y].length;
+                    this.preferred_cursor_x = this.cursor_x;
+                    break;
+                case "PageUp":
+                    this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
+                    this.has_selection = false;
+                    this.cursor_y = Math.max(0, this.cursor_y - 10);
+                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
+                    break;
+                case "PageDown":
+                    this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
+                    this.has_selection = false;
+                    this.cursor_y = Math.min(this.lines.length - 1, this.cursor_y + 10);
+                    this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
+                    break;
             }
         }
         else if (this.is_shift && !this.is_ctrl) {
@@ -540,8 +601,7 @@ class Editor {
                         this.has_selection = false;
                     }
                     this.selection.end.y = Math.max(0, this.selection.end.y - 1);
-                    this.selection.end.y = Math.min(this.lines.length - 1, this.selection.end.y);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
+                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, Math.max(this.selection.end.x, this.preferred_cursor_x));
                     this.selection.end.x = Math.max(0, this.selection.end.x);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
@@ -552,8 +612,7 @@ class Editor {
                         this.has_selection = false;
                     }
                     this.selection.end.y = Math.min(this.lines.length - 1, this.selection.end.y + 1);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
+                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, Math.max(this.selection.end.x, this.preferred_cursor_x));
                     this.selection.end.x = Math.max(0, this.selection.end.x);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
@@ -571,6 +630,7 @@ class Editor {
                     }
                     this.cursor_x = this.selection.end.x;
                     this.cursor_y = this.selection.end.y;
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "ArrowRight":
                     if (!this.has_selection) {
@@ -585,6 +645,7 @@ class Editor {
                     }
                     this.cursor_x = this.selection.end.x;
                     this.cursor_y = this.selection.end.y;
+                    this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "Tab":
                     e.preventDefault();
@@ -607,6 +668,8 @@ class Editor {
                         
                     }
                     else {
+                        this.selection.end.x -= this.tab_size;
+                        this.selection.start.x -= this.tab_size;
                         if (this.lines[this.cursor_y].startsWith(this.tab_string)) {
                             this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(this.tab_size);
                             this.cursor_x -= this.tab_size;
@@ -627,8 +690,7 @@ class Editor {
                         this.has_selection = false;
                     }
                     this.selection.end.y = Math.max(0, this.selection.end.y - 1);
-                    this.selection.end.y = Math.min(this.lines.length - 1, this.selection.end.y);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
+                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, math.max(this.selection.end.x, this.preferred_cursor_x));
                     this.selection.end.x = Math.max(0, this.selection.end.x);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
@@ -639,8 +701,7 @@ class Editor {
                         this.has_selection = false;
                     }
                     this.selection.end.y = Math.min(this.lines.length - 1, this.selection.end.y + 1);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
-                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, this.selection.end.x);
+                    this.selection.end.x = Math.min(this.lines[this.selection.end.y].length, math.max(this.selection.end.x, this.preferred_cursor_x));
                     this.selection.end.x = Math.max(0, this.selection.end.x);
                     this.cursor_y = this.selection.end.y;
                     this.cursor_x = this.selection.end.x;
@@ -738,72 +799,6 @@ class Editor {
             this.pushChange(change);
     }
 
-    pushChange(change) {
-        let merged = false;
-
-        const last = this.changeRecord[this.changeRecord.length - 1];
-
-        if (last && last.mergeable) {
-            merged = this.mergeChanges(change);
-        }
-
-        if (merged) return;
-
-        if (merged) return;
-        // else
-        if (this.changeRecord_index > 0) {
-            this.changeRecord.splice(
-                this.changeRecord.length - this.changeRecord_index,
-                this.changeRecord_index
-            );
-        }
-        this.changeRecord.splice(this.changeRecord.length - this.changeRecord_index, this.changeRecord_index);
-        this.changeRecord.push(change);
-        this.changeRecord_index = 0;
-    }
-
-    mergeChanges(change) {
-        console.log(change.type);
-        switch (change.type) {
-            case "insert":
-                return this.mergeInsertion(change);
-            case "delete-char":
-            case "backspace-char":
-                return this.mergeDeletion(change);
-        }
-        return false;
-    }
-
-    mergeDeletion(change)
-    {
-        const last = this.changeRecord[this.changeRecord.length - 1];
-        if (!last) return false;
-        if (last.cursor_after.y !== change.cursor_before.y) return false;
-        if (last.cursor_after.x !== change.cursor_before.x) return false;
-        console.log(change.key, last.key);
-        
-        if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
-        change.affected_lines[0].before = last.affected_lines[0].before;
-        change.cursor_before = last.cursor_before;
-        change.selection_before = last.selection_before;
-        this.changeRecord[this.changeRecord.length - 1] = change;
-        return true;
-    }
-
-    mergeInsertion(change)
-    {
-        const last = this.changeRecord[this.changeRecord.length - 1];
-        if (!last) return false;
-        if (last.cursor_after.y !== change.cursor_before.y) return false;
-        if (last.cursor_after.x !== change.cursor_before.x - 1) return false;
-        if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
-        change.affected_lines[0].before = last.affected_lines[0].before;
-        change.cursor_before = last.cursor_before;
-        change.selection_before = last.selection_before;
-        this.changeRecord[this.changeRecord.length - 1] = change;
-        return true;
-    }
-
     canStop(x, y, isSearchingWord) {
         if (!isSearchingWord) {
             return this.lines[y][x] != " " && this.lines[y][x] != "\t";
@@ -811,61 +806,6 @@ class Editor {
         else {
             return this.lines[y][x] === " " || x == this.lines[y].length -1;
         }
-    }
-
-    redo() {
-        const record = this.changeRecord[this.changeRecord.length - this.changeRecord_index];        
-        if (!record) return;
-        this.cursor_x = record.cursor_after.x;
-        this.cursor_y = record.cursor_after.y;
-        this.selection = structuredClone(record.selection_after);
-        for (let i = record.affected_lines.length - 1; i >= 0; i--) {
-            const e = record.affected_lines[i];
-            if (e.after === null) {
-                this.lines.splice(e.line, 1);
-            }
-        } 
-        for (const e of record.affected_lines) {
-            if (e.before !== null && e.after !== null) {
-                this.lines[e.line] = e.after;
-            }
-        }
-        for (const e of record.affected_lines) {
-            if (e.before === null) {
-                this.lines.splice(e.line, 0, e.after);
-            }
-        }
-        this.changeRecord_index--;
-
-    }
-
-    undo() {
-        console.log(this.changeRecord);
-
-        const record = this.changeRecord[this.changeRecord.length - 1 - this.changeRecord_index];
-        if (!record) return;
-        
-        this.cursor_x = record.cursor_before.x;
-        this.cursor_y = record.cursor_before.y;
-        this.selection = structuredClone(record.selection_before);
-
-        for (let i = record.affected_lines.length - 1; i >= 0; i--) {
-            const e = record.affected_lines[i];
-            if (e.before === null) {
-                this.lines.splice(e.line, 1);
-            }
-        }
-        for (const e of record.affected_lines) {
-            if (e.before !== null && e.after !== null) {
-                this.lines[e.line] = e.before;
-            }
-        }
-        for (const e of record.affected_lines) {
-            if (e.after === null) {
-                this.lines.splice(e.line, 0, e.before);
-            }
-        }
-        this.changeRecord_index++;
     }
 
     deleteSelection()
@@ -995,6 +935,132 @@ class Editor {
         }
     }
 
+    redo() {
+        const record = this.changeRecord[this.changeRecord.length - this.changeRecord_index];        
+        if (!record) return;
+        this.cursor_x = record.cursor_after.x;
+        this.cursor_y = record.cursor_after.y;
+        this.selection = structuredClone(record.selection_after);
+        for (let i = record.affected_lines.length - 1; i >= 0; i--) {
+            const e = record.affected_lines[i];
+            if (e.after === null) {
+                this.lines.splice(e.line, 1);
+            }
+        } 
+        for (const e of record.affected_lines) {
+            if (e.before !== null && e.after !== null) {
+                this.lines[e.line] = e.after;
+            }
+        }
+        for (const e of record.affected_lines) {
+            if (e.before === null) {
+                this.lines.splice(e.line, 0, e.after);
+            }
+        }
+        this.changeRecord_index--;
+
+    }
+
+    undo() {
+        console.log(this.changeRecord);
+
+        const record = this.changeRecord[this.changeRecord.length - 1 - this.changeRecord_index];
+        if (!record) return;
+        
+        this.cursor_x = record.cursor_before.x;
+        this.cursor_y = record.cursor_before.y;
+        this.selection = structuredClone(record.selection_before);
+
+        for (let i = record.affected_lines.length - 1; i >= 0; i--) {
+            const e = record.affected_lines[i];
+            if (e.before === null) {
+                this.lines.splice(e.line, 1);
+            }
+        }
+        for (const e of record.affected_lines) {
+            if (e.before !== null && e.after !== null) {
+                this.lines[e.line] = e.before;
+            }
+        }
+        for (const e of record.affected_lines) {
+            if (e.after === null) {
+                this.lines.splice(e.line, 0, e.before);
+            }
+        }
+        this.changeRecord_index++;
+    }
+
+    pushChange(change) {
+        let merged = false;
+
+        const last = this.changeRecord[this.changeRecord.length - 1];
+
+        if (last && last.mergeable) {
+            merged = this.mergeChanges(change);
+        }
+
+        if (merged) return;
+
+        if (merged) return;
+        // else
+        if (this.changeRecord_index > 0) {
+            this.changeRecord.splice(
+                this.changeRecord.length - this.changeRecord_index,
+                this.changeRecord_index
+            );
+        }
+        this.changeRecord.splice(this.changeRecord.length - this.changeRecord_index, this.changeRecord_index);
+        this.changeRecord.push(change);
+        this.changeRecord_index = 0;
+    }
+
+    mergeChanges(change) {
+        console.log(change.type);
+        switch (change.type) {
+            case "insert":
+                return this.mergeInsertion(change);
+            case "delete-char":
+            case "backspace-char":
+                return this.mergeDeletion(change);
+        }
+        return false;
+    }
+
+    mergeDeletion(change)
+    {
+        const last = this.changeRecord[this.changeRecord.length - 1];
+        if (!last) return false;
+        if (last.cursor_after.y !== change.cursor_before.y) return false;
+        if (last.cursor_after.x !== change.cursor_before.x) return false;
+        console.log(change.key, last.key);
+        
+        if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
+        change.affected_lines[0].before = last.affected_lines[0].before;
+        change.cursor_before = last.cursor_before;
+        change.selection_before = last.selection_before;
+        this.changeRecord[this.changeRecord.length - 1] = change;
+        return true;
+    }
+
+    mergeInsertion(change)
+    {
+        const last = this.changeRecord[this.changeRecord.length - 1];
+        if (!last) return false;
+        if (last.cursor_after.y !== change.cursor_before.y) return false;
+        if (last.cursor_after.x !== change.cursor_before.x - 1) return false;
+        if (/[\s\t]+/.test(change.key) && !/[\s\t]+/.test(last.key)) return false;
+        change.affected_lines[0].before = last.affected_lines[0].before;
+        change.cursor_before = last.cursor_before;
+        change.selection_before = last.selection_before;
+        this.changeRecord[this.changeRecord.length - 1] = change;
+        return true;
+    }
+
+
+    //#########################################################################
+    //                    RENDERING + TOKENIZER
+    //#########################################################################
+
     render() {
         this.ctx.fillStyle = '#ffffff';
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -1015,7 +1081,7 @@ class Editor {
             for (let j = 0; j < tokens.length; j++) {
                 const token = tokens[j].text;
                 const token_width = token.length * this.character_width;
-                this.ctx.fillStyle = this.getSyntacColor(token);
+                this.ctx.fillStyle = this.getSyntaxColor(token);
                 this.ctx.fillText(token, x, this.line_height * i + this.line_height - this.scroll_y);
                 x += token_width;
             }
@@ -1026,7 +1092,7 @@ class Editor {
         this.drawMenu();
     }
 
-    getSyntacColor(token) {                  
+    getSyntaxColor(token) {                  
         switch (token) {
             case "if":
             case "else":
@@ -1077,23 +1143,13 @@ class Editor {
 
     drawLineNumbers() {
         this.ctx.fillStyle = "#777777ff";
-        for (let i = 0; i < this.lines.length; i++) {
+        let start_y = Math.floor(this.scroll_y/this.line_height);
+        let end_y = Math.ceil((this.scroll_y + this.viewport_height)/this.line_height)
+        end_y = Math.min(this.lines.length, end_y);
+        for (let i = start_y; i < end_y; i++) {
             const element = this.lines[i];
             this.ctx.fillText(i+1, this.menu_width, this.line_height * i + this.line_height - this.scroll_y);
         }
-    }
-
-    setCursor(x, y) {
-        let line = Math.floor((y + this.scroll_y) / this.line_height);
-        if (line >= this.lines.length) line = this.lines.length - 1;
-        if (line < 0) line = 0;
-        let col = Math.round((x - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
-        line = Math.min(this.lines.length - 1, line);
-        line = Math.max(0, line);
-        col = Math.min(this.lines[line].length, col);
-        col = Math.max(0, col);        
-        this.cursor_y = line;
-        this.cursor_x = col;
     }
 
     drawSelection() {
@@ -1126,19 +1182,6 @@ class Editor {
             this.ctx.fillRect(this.menu_width + this.editor_x_offset + start - this.scroll_x, y * this.line_height + this.line_spacing + 3  - this.scroll_y, width, this.character_height);
         }
     }
-
-    findSelection(x, y) {
-        let line = Math.floor((y + this.scroll_y) / this.line_height);
-        if (line >= this.lines.length) line = this.lines.length - 1;
-        if (line < 0) line = 0;
-        let col = Math.round((x - this.menu_width - this.editor_x_offset + this.scroll_x) / this.character_width);
-        line = Math.min(this.lines.length - 1, line);
-        line = Math.max(0, line);
-        col = Math.min(this.lines[line].length, col);
-        col = Math.max(0, col);
-        this.selection.end = { x: col, y: line };
-    }
-
 
     drawMenu() {
         this.ctx.fillStyle = '#111111';
@@ -1175,7 +1218,6 @@ class Editor {
         this.has_selection = this.selection.start.x != this.selection.end.x || this.selection.start.y != this.selection.end.y;
         this.mouseClicked = [false, false, false];
     }
-
 
     updateMenu() {
         this.canvas.style.cursor = 'default';
