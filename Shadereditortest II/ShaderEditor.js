@@ -1,3 +1,8 @@
+//######################################################################################################
+//                     WARNING: THE FOLLOWING CODE IS UGLY AND MIGHT CAUSE SEIZURES
+//######################################################################################################
+
+
 class Editor {
     constructor() {
         this.canvas = document.createElement('canvas');
@@ -315,52 +320,118 @@ class Editor {
                         }
                         else {
                             if (this.lines[this.cursor_y].substring(this.cursor_x - this.tab_size, this.cursor_x) === this.tab_string) {
-                                const line_before = this.lines[this.cursor_y];
-                                const cursor_before = { x: this.cursor_x, y: this.cursor_y };
-                                const selection_before = structuredClone(this.selection);
-                                this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - this.tab_size) + this.lines[this.cursor_y].substring(this.cursor_x);
-                                this.cursor_x -= this.tab_size;
-                                const change = {
-                                    type: "backspace-tab",
-                                    mergeable: false,
-                                    cursor_before,
-                                    cursor_after: { x: this.cursor_x, y: this.cursor_y },
-                                    selection_before,
-                                    selection_after: structuredClone(this.selection),
-                                    affected_lines: [
-                                        {
-                                            line: this.cursor_y,
-                                            before: line_before,
-                                            after: this.lines[this.cursor_y]
-                                        }
-                                    ]
-                                };
-                                this.pushChange(change);
+                                let indent = 0;
+                                for (let i = this.cursor_x; i >= 0 && this.lines[this.cursor_y][i-1] == " "; i--) indent++;
+                                console.log(indent, this.cursor_x);
+                                
+                                if (indent == this.cursor_x) {
+                                    const line_before = this.lines[this.cursor_y];
+                                    const cursor_before = { x: this.cursor_x, y: this.cursor_y };
+                                    const selection_before = structuredClone(this.selection);
+                                    const after = this.lines[this.cursor_y].substring(this.cursor_x);
+                                    this.lines.splice(this.cursor_y, 1);
+                                    this.cursor_y--;
+                                    this.cursor_x = this.lines[this.cursor_y].length;
+                                    this.lines[this.cursor_y] += after;
+                                    const change = {
+                                        type: "backspace-tab",
+                                        mergeable: false,
+                                        cursor_before,
+                                        cursor_after: { x: this.cursor_x, y: this.cursor_y },
+                                        selection_before,
+                                        selection_after: structuredClone(this.selection),
+                                        affected_lines: [
+                                            {
+                                                line: this.cursor_y,
+                                                before: line_before,
+                                                after: this.lines[this.cursor_y]
+                                            },
+                                            {
+                                                line: this.cursor_y + 1,
+                                                before: this.lines[this.cursor_y + 1],
+                                                after: null
+                                            }
+                                        ]
+                                    };
+                                    this.pushChange(change);
+                                }
+                                else {
+                                    const line_before = this.lines[this.cursor_y];
+                                    const cursor_before = { x: this.cursor_x, y: this.cursor_y };
+                                    const selection_before = structuredClone(this.selection);
+                                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - this.tab_size) + this.lines[this.cursor_y].substring(this.cursor_x);
+                                    this.cursor_x -= this.tab_size;
+                                    const change = {
+                                        type: "backspace-tab",
+                                        mergeable: false,
+                                        cursor_before,
+                                        cursor_after: { x: this.cursor_x, y: this.cursor_y },
+                                        selection_before,
+                                        selection_after: structuredClone(this.selection),
+                                        affected_lines: [
+                                            {
+                                                line: this.cursor_y,
+                                                before: line_before,
+                                                after: this.lines[this.cursor_y]
+                                            }
+                                        ]
+                                    };
+                                    this.pushChange(change);
+                                }
                             }
-                            else  {
-                                const line_before = this.lines[this.cursor_y];
-                                const cursor_before = { x: this.cursor_x, y: this.cursor_y };
-                                const selection_before = structuredClone(this.selection);
-                                const char = this.lines[this.cursor_y][this.cursor_x-1];
-                                this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - 1) + this.lines[this.cursor_y].substring(this.cursor_x);
-                                this.cursor_x--;
-                                const change = {
-                                    type: "backspace-char",
-                                    key: char,
-                                    mergeable: true,
-                                    cursor_before,
-                                    cursor_after: { x: this.cursor_x, y: this.cursor_y },
-                                    selection_before,
-                                    selection_after: structuredClone(this.selection),
-                                    affected_lines: [
-                                        {
-                                            line: this.cursor_y,
-                                            before: line_before,
-                                            after: this.lines[this.cursor_y]
-                                        }
-                                    ]
-                                };
-                                this.pushChange(change);
+                            else
+                            {                                
+                                if (this.lines[this.cursor_y][this.cursor_x] && this.doBracketsMatch(this.lines[this.cursor_y][this.cursor_x - 1], this.lines[this.cursor_y][this.cursor_x]))
+                                {
+                                    
+                                    const line_before = this.lines[this.cursor_y];
+                                    const cursor_before = { x: this.cursor_x, y: this.cursor_y };
+                                    const selection_before = structuredClone(this.selection);
+                                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - 1) + this.lines[this.cursor_y].substring(this.cursor_x+1);
+                                    this.cursor_x--;
+                                    const change = {
+                                        type: "backspace-brackets",
+                                        mergeable: false,
+                                        cursor_before,
+                                        cursor_after: { x: this.cursor_x, y: this.cursor_y },
+                                        selection_before,
+                                        selection_after: structuredClone(this.selection),
+                                        affected_lines: [
+                                            {
+                                                line: this.cursor_y,
+                                                before: line_before,
+                                                after: this.lines[this.cursor_y]
+                                            }
+                                        ]
+                                    };
+                                    this.pushChange(change);
+                                }
+                                else
+                                {
+                                    const line_before = this.lines[this.cursor_y];
+                                    const cursor_before = { x: this.cursor_x, y: this.cursor_y };
+                                    const selection_before = structuredClone(this.selection);
+                                    const char = this.lines[this.cursor_y][this.cursor_x-1];
+                                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - 1) + this.lines[this.cursor_y].substring(this.cursor_x);
+                                    this.cursor_x--;
+                                    const change = {
+                                        type: "backspace-char",
+                                        key: char,
+                                        mergeable: true,
+                                        cursor_before,
+                                        cursor_after: { x: this.cursor_x, y: this.cursor_y },
+                                        selection_before,
+                                        selection_after: structuredClone(this.selection),
+                                        affected_lines: [
+                                            {
+                                                line: this.cursor_y,
+                                                before: line_before,
+                                                after: this.lines[this.cursor_y]
+                                            }
+                                        ]
+                                    };
+                                    this.pushChange(change);
+                                }
                             }
                         }
                     } else {
@@ -434,7 +505,7 @@ class Editor {
                             after: null
                         }
                     );
-                    if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x] && /[\)\}\]\>]/.test(this.lines[this.cursor_y][this.cursor_x]))
+                    if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x] && this.doBracketsMatch(this.lines[this.cursor_y][this.cursor_x - 1], this.lines[this.cursor_y][this.cursor_x]))
                     {
                         let indent = 0;
                         while (indent < this.lines[this.cursor_y].length && this.lines[this.cursor_y][indent] == " ")
@@ -457,7 +528,7 @@ class Editor {
                         this.pushChange(change);
                         this.preferred_cursor_x = this.cursor_x;
                     }
-                    else if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x-1] && /[\(\{\[\<]/.test(this.lines[this.cursor_y][this.cursor_x-1]))
+                    else if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x-1] && this.is_opening_bracket(this.lines[this.cursor_y][this.cursor_x-1]))
                     {
                         let indent = 0;
                         while (indent < this.lines[this.cursor_y].length && this.lines[this.cursor_y][indent] == " ")
@@ -808,6 +879,31 @@ class Editor {
         if (e.key.length > 1 && e.key.startsWith("F"))
             return;
         this.autoScroll();
+    }
+
+    is_closing_bracket(key) {
+        if (key === ")") return true;
+        if (key === "]") return true;
+        if (key === "}") return true;
+        if (key === ">") return true;
+        return false;
+    }
+
+    is_opening_bracket(key) {
+        if (key === "(") return true;
+        if (key === "[") return true;
+        if (key === "{") return true;
+        if (key === "<") return true;
+        return false;
+    }
+
+    doBracketsMatch(b1, b2)
+    {
+        if (b1 === "(" && b2 === ")") return true;
+        if (b1 === "[" && b2 === "]") return true;
+        if (b1 === "{" && b2 === "}") return true;
+        if (b1 === "<" && b2 === ">") return true;
+        return false;
     }
 
     typeSingleTab()
