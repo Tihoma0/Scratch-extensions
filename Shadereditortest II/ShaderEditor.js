@@ -2,6 +2,16 @@
 //                     WARNING: THE FOLLOWING CODE IS UGLY AND MIGHT CAUSE SEIZURES
 //######################################################################################################
 
+// WARNINGS
+// 1. Naming conventions:
+//      - Magic numbers
+//      - very confusing, doubling names
+//      - SNAKE AND CAMEL CASE ARE TOTALLY MIXED UP!
+// 2. Few comments
+// 3. No documentation (except for this comment)
+// 4. MASSIVE SWITCH CASES
+// 5. MASSIVE typeKey() Functioj (about 750+ lines)
+// 6. I DO care about performance but in some cases it's not worth it
 
 class Editor {
     constructor() {
@@ -15,11 +25,11 @@ class Editor {
         
         document.body.appendChild(this.canvas);
         this.ctx = this.canvas.getContext('2d');
-        this.font = '13px monospace';
+        this.font = '19px monospace';
         this.ctx.font = this.font;
 
         this.character_width = this.ctx.measureText('x').width; // monospace (;
-        this.character_height = 18;
+        this.character_height = 23;
         this.line_spacing = 0;
         this.line_height = this.character_height + this.line_spacing;
 
@@ -29,6 +39,44 @@ class Editor {
 
         this.lines = ["#version 300 es", "void main()",  "{", "    gl_Position = vec4(0.0, 0.0, 0.0, 1.0); ", "}"];
         this.run = this.run.bind(this);
+        this.punctuation = new Map("{}[]();,: .".split("").map((c) => [c, c.charCodeAt(0)]));
+        this.numbers = new Map("0123456789".split("").map((c) => [c, c.charCodeAt(0)]));
+        this.operators = new Map("+-*/%&|^".split("").map((c) => [c, c.charCodeAt(0)]));
+        this.token_colors = {
+            "number": "#948eae",
+            "operator": "#adffac",
+            "punctuation": "#cc75cf",
+            "control_flow": "#534fa2",
+            "storage_qualifier": "#006eff",
+            "char": "#ffffff",
+            "scalar": "#3d5bba",
+            "vector": "#4d43ba",
+            "matrix": "#5943ba",
+            "sampler": "#7543ba",
+            "gl vars": "#9243ba",
+            "preprocessor": "#201577",
+            "string": "#ff9900",
+            "identifier": "#aaf1ff"
+        };
+
+        this.parantheses = new Map();
+        this.parantheses_chars = new Map("()[]{}".split("").map((c) => [c, c.charCodeAt(0)]));
+        this.closing_parantheses = new Map(")]}".split("").map((c) => [c, c.charCodeAt(0)]));
+        this.opening_parantheses = new Map("({[".split("").map((c) => [c, c.charCodeAt(0)]));
+        this.parantheses_stack = [];
+        this.parantheses_colors = [
+            "#e11eff",
+            "#FF69B4",
+            "#FF8C00",
+            "#FFD700",
+            "#7FFF00",
+            "#00CED1",
+            "#1E90FF",
+        ];
+
+        this.identifiers = new Map();
+
+        this.is_dirty = true;
 
         this.menuItems = [
             {
@@ -197,7 +245,7 @@ class Editor {
     }
 
     //#########################################################################
-    //                    CURSOR + SELECTION
+    //                                SELECTION                                
     //#########################################################################
 
     findSelection(x, y) {
@@ -292,6 +340,7 @@ class Editor {
                     this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
                     break;
                 case "Backspace":
+                    this.is_dirty = true;
                     if (this.selection.start.y == this.selection.end.y && this.selection.start.x == this.selection.end.x) {
                         if (this.cursor_x == 0) {
                             if (this.cursor_y == 0) return;
@@ -381,7 +430,7 @@ class Editor {
                             }
                             else
                             {                                
-                                if (this.lines[this.cursor_y][this.cursor_x] && this.doBracketsMatch(this.lines[this.cursor_y][this.cursor_x - 1], this.lines[this.cursor_y][this.cursor_x]))
+                                if (this.lines[this.cursor_y][this.cursor_x] && this.doParanthesesMatch(this.lines[this.cursor_y][this.cursor_x - 1], this.lines[this.cursor_y][this.cursor_x]))
                                 {
                                     
                                     const line_before = this.lines[this.cursor_y];
@@ -443,6 +492,7 @@ class Editor {
 
                     break;
                 case "Delete":
+                    this.is_dirty = true;
                     if (this.selection.start.y == this.selection.end.y && this.selection.start.x == this.selection.end.x) {
                         if (this.cursor_x == this.lines[this.cursor_y].length && this.cursor_y == this.lines.length - 1) return;
                         if (this.cursor_x == this.lines[this.cursor_y].length) {
@@ -492,20 +542,22 @@ class Editor {
                     this.preferred_cursor_x = this.cursor_x;
                     break;
                 case "Enter":
+                    this.is_dirty = true;
                     let change = this.deleteSelection();
-                    change.affected_lines.push(
-                        {
-                            line: this.cursor_y,
-                            before: this.lines[this.cursor_y],
-                            after: null 
-                        },
-                        {
-                            line: this.cursor_y + 1,
-                            before: null,
-                            after: null
-                        }
-                    );
-                    if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x] && this.doBracketsMatch(this.lines[this.cursor_y][this.cursor_x - 1], this.lines[this.cursor_y][this.cursor_x]))
+                    if (!this.has_selection)
+                        change.affected_lines.push(
+                            {
+                                line: this.cursor_y,
+                                before: this.lines[this.cursor_y],
+                                after: null 
+                            },
+                            {
+                                line: this.cursor_y + 1,
+                                before: null,
+                                after: null
+                            }
+                        );
+                    if (!this.has_selection && this.lines[this.cursor_y][this.cursor_x] && this.doParanthesesMatch(this.lines[this.cursor_y][this.cursor_x - 1], this.lines[this.cursor_y][this.cursor_x]))
                     {
                         let indent = 0;
                         while (indent < this.lines[this.cursor_y].length && this.lines[this.cursor_y][indent] == " ")
@@ -521,7 +573,7 @@ class Editor {
                         change.mergeable = false;
                         change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
                         change.affected_lines[0].after = this.lines[this.cursor_y - 1];
-                        change.affected_lines[1].after = this.lines[this.cursor_y];
+                        change.affected_lines.push({ line: this.cursor_y, before: null, after: this.lines[this.cursor_y] });
                         change.affected_lines.splice(2, 0, { line: this.cursor_y + 1, before: null, after: "" });
                         this.lines.splice(this.cursor_y, 0, " ".repeat(indent) + this.tab_string);
                         this.cursor_x = indent + this.tab_size;
@@ -544,7 +596,7 @@ class Editor {
                         change.mergeable = false;
                         change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
                         change.affected_lines[0].after = this.lines[this.cursor_y - 1];
-                        change.affected_lines[1].after = this.lines[this.cursor_y];
+                        change.affected_lines.push({ line: this.cursor_y, before: null, after: this.lines[this.cursor_y] });
                         this.cursor_x = indent + this.tab_size;
                         this.pushChange(change);
                         this.preferred_cursor_x = this.cursor_x;
@@ -564,13 +616,14 @@ class Editor {
                         change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
                         change.selection_after = structuredClone(this.selection);
                         change.affected_lines[0].after = this.lines[this.cursor_y - 1];
-                        change.affected_lines[1].after = this.lines[this.cursor_y];
+                        change.affected_lines.push({ line: this.cursor_y, before: null, after: this.lines[this.cursor_y] });
                         this.pushChange(change);
                         this.preferred_cursor_x = this.cursor_x;
                     }
                     break;
                 case "Tab":{
                     e.preventDefault();
+                    this.is_dirty = true;
                     let end = this.ordered_selection.end;
                     let start = this.ordered_selection.start;
                     if (end.y - start.y >= 1)
@@ -582,7 +635,8 @@ class Editor {
                     }
                     break;
                 }
-                default: 
+                default:
+                    this.is_dirty = true;
                     this.typeLetter(e);
                     break;
             }
@@ -593,18 +647,22 @@ class Editor {
                     this.copy();
                     break;
                 case "v":
+                    this.is_dirty = true;
                     this.paste();
                     break;
                 case "x":
+                    this.is_dirty = true;
                     this.cut();
                     break;
                 case "a":
                     this.selection = { start: { x: 0, y: 0 }, end: { x: this.lines[this.lines.length - 1].length, y: this.lines.length - 1 } };
                     break;
                 case "z":
+                    this.is_dirty = true;
                     this.undo();
                     break;
                 case "y":
+                    this.is_dirty = true;
                     this.redo();
                     break;
                 case "ArrowLeft": {
@@ -655,6 +713,175 @@ class Editor {
                     this.preferred_cursor_x = this.cursor_x;
                     break;
                 }
+                case "Backspace":
+                    this.is_dirty = true;
+                    if (this.selection.start.y == this.selection.end.y && this.selection.start.x == this.selection.end.x) {
+                        if (this.cursor_x == 0) {
+                            if (this.cursor_y == 0) return;
+                            let change = {
+                                type: "backspace-line",
+                                mergeable: false,
+                                cursor_before: { x: this.cursor_x, y: this.cursor_y },
+                                cursor_after: null,
+                                selection_before: structuredClone(this.selection),
+                                selection_after: null,
+                                affected_lines: [
+                                    { line: this.cursor_y, before: this.lines[this.cursor_y], after: null },
+                                    { line: this.cursor_y - 1, before: this.lines[this.cursor_y - 1], after: null },
+                                ],
+                            };
+                            const line = this.lines[this.cursor_y - 1];
+                            this.lines.splice(this.cursor_y - 1, 1);
+                            this.cursor_y--;
+                            this.cursor_x = line.length;
+                            this.preferred_cursor_x = this.cursor_x;
+                            this.lines[this.cursor_y] = line + this.lines[this.cursor_y];
+                            change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                            change.selection_after = structuredClone(this.selection);
+                            change.affected_lines[1].after = this.lines[this.cursor_y];
+                            this.pushChange(change);
+                        }
+                        else {
+                            if (this.lines[this.cursor_y].substring(this.cursor_x - this.tab_size, this.cursor_x) === this.tab_string) {
+                                const line_before = this.lines[this.cursor_y];
+                                const cursor_before = { x: this.cursor_x, y: this.cursor_y };
+                                const selection_before = structuredClone(this.selection);
+                                this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - this.tab_size) + this.lines[this.cursor_y].substring(this.cursor_x);
+                                this.cursor_x -= this.tab_size;
+                                const change = {
+                                    type: "backspace-tab",
+                                    mergeable: false,
+                                    cursor_before,
+                                    cursor_after: { x: this.cursor_x, y: this.cursor_y },
+                                    selection_before,
+                                    selection_after: structuredClone(this.selection),
+                                    affected_lines: [
+                                        {
+                                            line: this.cursor_y,
+                                            before: line_before,
+                                            after: this.lines[this.cursor_y]
+                                        }
+                                    ]
+                                };
+                                this.pushChange(change);
+                            }
+                            else
+                            {                                
+                                const line_before = this.lines[this.cursor_y];
+                                const cursor_before = { x: this.cursor_x, y: this.cursor_y };
+                                const selection_before = structuredClone(this.selection);
+                                const char = this.lines[this.cursor_y][this.cursor_x-1];
+                                this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x - 1) + this.lines[this.cursor_y].substring(this.cursor_x);
+                                this.cursor_x--;
+                                const change = {
+                                    type: "backspace-char",
+                                    key: char,
+                                    mergeable: true,
+                                    cursor_before,
+                                    cursor_after: { x: this.cursor_x, y: this.cursor_y },
+                                    selection_before,
+                                    selection_after: structuredClone(this.selection),
+                                    affected_lines: [
+                                        {
+                                            line: this.cursor_y,
+                                            before: line_before,
+                                            after: this.lines[this.cursor_y]
+                                        }
+                                    ]
+                                };
+                                this.pushChange(change);
+                            }
+                        }
+                    } else {
+                        const change = this.deleteSelection();
+                        this.changeRecord.splice(this.changeRecord.length - this.changeRecord_index, this.changeRecord_index);
+                        this.pushChange(change);
+                    }
+                    this.preferred_cursor_x = this.cursor_x;
+
+                    break;
+                case "Delete":
+                    this.is_dirty = true;
+                    if (this.selection.start.y == this.selection.end.y && this.selection.start.x == this.selection.end.x) {
+                        if (this.cursor_x == this.lines[this.cursor_y].length && this.cursor_y == this.lines.length - 1) return;
+                        if (this.cursor_x == this.lines[this.cursor_y].length) {
+                            let change = {
+                                type: "delete-line",
+                                mergeable: false,
+                                cursor_before: { x: this.cursor_x, y: this.cursor_y },
+                                cursor_after: null,
+                                selection_before: structuredClone(this.selection),
+                                selection_after: null,
+                                affected_lines: [
+                                    { line: this.cursor_y, before: this.lines[this.cursor_y], after: null },
+                                    { line: this.cursor_y + 1, before: this.lines[this.cursor_y + 1], after: null },
+                                ],
+                            };
+                            const line = this.lines[this.cursor_y + 1];
+                            this.lines.splice(this.cursor_y + 1, 1);
+                            this.lines[this.cursor_y] += line;
+                            change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                            change.selection_after = structuredClone(this.selection);
+                            change.affected_lines[0].after = this.lines[this.cursor_y];
+                            this.pushChange(change);
+                        }
+                        else {
+                            let change = {
+                                type: "delete-char",
+                                mergeable: true,
+                                key: this.lines[this.cursor_y][this.cursor_x],
+                                cursor_before: { x: this.cursor_x, y: this.cursor_y },
+                                cursor_after: null,
+                                selection_before: structuredClone(this.selection),
+                                selection_after: null,
+                                affected_lines: [
+                                    { line: this.cursor_y, before: this.lines[this.cursor_y], after: null },
+                                ],
+                            };
+                            this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x) + this.lines[this.cursor_y].substring(this.cursor_x + 1);    
+                            change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                            change.selection_after = structuredClone(this.selection);
+                            change.affected_lines[0].after = this.lines[this.cursor_y];
+                            this.pushChange(change);
+                        }
+                    } else {
+                        const change = this.deleteSelection();
+                        this.pushChange(change);
+                    }
+                    this.preferred_cursor_x = this.cursor_x;
+                    break;
+                case "Enter":
+                    this.is_dirty = true;
+                    let change = this.deleteSelection();
+                    if (!this.has_selection)
+                        change.affected_lines.push(
+                            {
+                                line: this.cursor_y,
+                                before: this.lines[this.cursor_y],
+                                after: null 
+                            },
+                        );
+                    const text_behind = this.lines[this.cursor_y].substring(this.cursor_x);
+                    this.lines.splice(this.cursor_y + 1, 0, text_behind);
+                    this.lines[this.cursor_y] = this.lines[this.cursor_y].substring(0, this.cursor_x);
+                    this.cursor_y++;
+                    this.cursor_x = 0;
+                    change.type = "insert-line";
+                    change.cursor_after = { x: this.cursor_x, y: this.cursor_y };
+                    change.selection_after = structuredClone(this.selection);
+                    change.affected_lines[0].after = this.lines[this.cursor_y - 1];
+                    change.affected_lines.push(
+                            {
+                                line: this.cursor_y,
+                                before: null,
+                                after: this.lines[this.cursor_y],
+                            },
+                        );
+                    this.pushChange(change);
+                    this.preferred_cursor_x = this.cursor_x;
+                    console.log(change);
+                    
+                    break;
                 case "Home":
                     this.selection = { start: { x: this.cursor_x, y: this.cursor_y }, end: { x: this.cursor_x, y: this.cursor_y } };
                     this.has_selection = false;
@@ -680,6 +907,7 @@ class Editor {
                     this.cursor_x = Math.min(this.lines[this.cursor_y].length, Math.max(this.preferred_cursor_x, this.cursor_x));
                     break;
                 default: 
+                    this.is_dirty = true;
                     this.typeLetter(e);
                     break;
             }
@@ -740,6 +968,7 @@ class Editor {
                     break;
                 case "Tab":
                     e.preventDefault();
+                    this.is_dirty = true;
                     let end = this.ordered_selection.end;
                     let start = this.ordered_selection.start;
                     if (end.y - start.y >= 1)
@@ -769,6 +998,7 @@ class Editor {
                     }
                     break;
                 default:
+                    this.is_dirty = true;
                     this.typeLetter(e);
                     break;
             }
@@ -863,6 +1093,7 @@ class Editor {
                     break;
                 }
                 default: 
+                    this.is_dirty = true;
                     this.typeLetter(e);
                     break;
             }
@@ -881,6 +1112,7 @@ class Editor {
         this.autoScroll();
     }
 
+    // shut up. I know this is not the fastest way to do this, but it's O(1)... Maybe O(1*brackets_I_want_to_handle) but I DONT CARE. 
     is_closing_bracket(key) {
         if (key === ")") return true;
         if (key === "]") return true;
@@ -897,7 +1129,7 @@ class Editor {
         return false;
     }
 
-    doBracketsMatch(b1, b2)
+    doParanthesesMatch(b1, b2)
     {
         if (b1 === "(" && b2 === ")") return true;
         if (b1 === "[" && b2 === "]") return true;
@@ -969,6 +1201,12 @@ class Editor {
     typeLetter(e)
     {
         if (e.key.length > 1) return;
+        if (!this.has_selection && this.is_closing_bracket(e.key) && e.key === this.lines[this.cursor_y][this.cursor_x])
+        {
+            this.cursor_x++;
+            this.preferred_cursor_x = this.cursor_x;
+        }
+        else {
             let change = this.deleteSelection();
             change.type = "insert";
             change.key = e.key;
@@ -988,6 +1226,7 @@ class Editor {
             this.cursor_x++;
             change.affected_lines[0].after = this.lines[this.cursor_y];
             this.pushChange(change);
+        }
         switch (e.key) {
             case "{":
                 this.autoType("}");
@@ -1294,75 +1533,328 @@ class Editor {
     //                    RENDERING + TOKENIZER
     //#########################################################################
 
-    render() {
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    computeParantheses()
+    {
+        this.parantheses.clear();
+        this.parantheses_stack = [];
+        for (let i = 0; i < this.lines.length; i++) {
+            const line = this.lines[i];
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                if (this.opening_parantheses.has(char)) {
+                    const key = `${i}:${j}`;
+                    this.parantheses_stack.push(char);
+                    this.parantheses.set(key, {char, layer: this.parantheses_stack.length});
+                }
+                else if (this.closing_parantheses.has(char)) {
+                    const key = `${i}:${j}`;
+                    const opening = this.parantheses_stack.pop();
+                    if (!this.doParanthesesMatch(opening, char)) {
+                        this.parantheses.set(key, {char, layer: -1});
+                        this.parantheses_stack.push(opening);
+                        
+                    }
+                    else
+                        this.parantheses.set(key, {char, layer: this.parantheses_stack.length + 1});                    
+                }
+            }
+        }
+    }
+
+    renderParantheses()
+    {
         let start_y = Math.floor(this.scroll_y/this.line_height);
         let end_y = Math.ceil((this.scroll_y + this.viewport_height)/this.line_height)
         end_y = Math.min(this.lines.length, end_y);
         
         for (let i = start_y; i < end_y; i++) {
-            const tokens = [];
-            for (const m of this.lines[i].matchAll(/\s+|[()]+|[,]+|(?:\d+\.\d+)|\d+|[a-zA-Z_]\w*|\.|[^()\s,]+/g)) {
-                tokens.push({
-                    text: m[0],
-                    start: m.index,
-                    end: m.index + m[0].length
-                });
+            const line = this.lines[i];
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                const key = `${i}:${j}`;
+                if (this.parantheses.has(key)) {
+                    const data = this.parantheses.get(key);
+                    if (!data) continue;
+                    if (data.layer === -1) {
+                        this.ctx.fillStyle = "#ff0000ff";
+                    }
+                    else {
+                        const color = this.parantheses_colors[data.layer % this.parantheses_colors.length];
+                        this.ctx.fillStyle = color;
+                    }
+                    const x = this.menu_width + this.character_width * j + this.editor_x_offset - this.scroll_x;
+                    this.ctx.fillText(data.char, x, this.line_height * i + this.line_height - this.scroll_y);
+                }
             }
+        }
+    }
+
+    render() {
+        this.ctx.fillStyle = '#18181b';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        let start_y = Math.floor(this.scroll_y/this.line_height);
+        let end_y = Math.ceil((this.scroll_y + this.viewport_height)/this.line_height)
+        end_y = Math.min(this.lines.length, end_y);
+        for (let i = start_y; i < end_y; i++) {
+            const tokens = [];
+            const line = this.lines[i];
+            let token = "";
+            let token_type = "";
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                if((this.canSplit(char, {type: token_type, text: token}))) {
+                    if (token !== "") {
+                        token_type = this.get_token_type("", {type: token_type, text: token});
+                        tokens.push({text: token, type: token_type});
+                        token = "";
+                        token_type = "operator";  
+                    }
+                    tokens.push({text: char, type: this.get_token_type(char, {type: "operator", text: ""})});
+                }
+                else if (j >= line.length - 1) {
+                    token_type = this.get_token_type(char, {type: token_type, text: token});
+                    token += char;
+                    token_type = this.get_token_type("", {type: token_type, text: token});
+                    tokens.push({text: token, type: token_type});
+                }
+                else
+                    {
+                        token_type = this.get_token_type(char, {type: token_type, text: token});                                            
+                        token += char;
+                    }
+            }
+
             let x = this.menu_width + this.editor_x_offset - this.scroll_x;
             for (let j = 0; j < tokens.length; j++) {
-                const token = tokens[j].text;
-                const token_width = token.length * this.character_width;
+                const token = tokens[j];
+                const token_width = token.text.length * this.character_width;
                 this.ctx.fillStyle = this.getSyntaxColor(token);
-                this.ctx.fillText(token, x, this.line_height * i + this.line_height - this.scroll_y);
+                this.ctx.fillText(token.text, x, this.line_height * i + this.line_height - this.scroll_y);
                 x += token_width;
             }
         }
+        if (this.is_dirty) {
+            this.recalculateIdentifiers();
+            this.computeParantheses();
+            this.is_dirty = false;
+        }
         this.drawLineNumbers();
+        this.renderParantheses();
         this.drawSelection();
         this.drawCursor();
         this.drawMenu();
     }
 
-    getSyntaxColor(token) {                  
-        switch (token) {
+    recalculateIdentifiers()
+    {
+        this.identifiers.clear();
+        for (let i = 0; i < this.lines.length; i++) {
+            const line = this.lines[i];
+            let token = "";
+            let token_type = "";
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                if((this.canSplit(char, {type: token_type, text: token}))) {
+                    if (token !== "") {
+                        token_type = this.get_token_type("", {type: token_type, text: token});
+                        if (token_type === "char")
+                            this.addIdentifier(token);
+                        token = "";
+                        token_type = "operator";  
+                    }
+                }
+                else if (j >= line.length - 1) {
+                    token_type = this.get_token_type(char, {type: token_type, text: token});
+                    token += char;
+                    token_type = this.get_token_type("", {type: token_type, text: token});
+                    if (token_type === "char")
+                        this.addIdentifier(token);
+                }
+                else
+                    {
+                        token_type = this.get_token_type(char, {type: token_type, text: token});                                            
+                        token += char;
+                    }
+            }
+        }
+    }
+
+    addIdentifier(token)
+    {
+        if (this.identifiers.has(token))
+        {
+            this.identifiers.set(token, true);
+            return;
+        }
+        this.identifiers.set(token, false);
+    }
+
+    get_token_type(char, token, next_char)
+    {
+        
+        switch (token.type) {
+            case "number":
+                if (token.text.startsWith("s"))
+                    console.log(token, char);
+                    
+                // everything is possible
+                if (this.numbers.has(char)) return "number";
+                if (this.operators.has(char)) return "operator";
+                if (char === "e" || char === "E" || char === "." || char === "f") return "number";
+                if (this.punctuation.has(char)) return "punctuation";
+                return "char";
+            case "operator":;
+                if (this.numbers.has(char) && ((token.text === "-" || token.text === "+") || token.text.length < 1)) return "number";
+                if (this.operators.has(char)) return "operator";
+                if (this.punctuation.has(char)) return "punctuation";
+                return "char";
+            case "punctuation":
+                // number and operator is impossible 
+                if (!this.punctuation.has(char)) return "char";
+                return "punctuation";
+            case "char":
+                // nothing is possible
+                return "char";
+            default:
+                return "number";
+        }
+    }
+
+    canSplit(char, token)
+    {
+        
+        if (this.punctuation.has(char) || this.operators.has(char)) {
+            if (token.type === "number" && char === ".") return false;
+            if (token.type === "operator" && (char === "-" || char === "+")) return false;
+            return true;
+        }
+        return false;
+    }
+
+    getSyntaxColor(token) {
+        if (token.text.startsWith("+"))
+            console.log(token.text);
+            
+        switch (token.type) {
+            case "char":
+                return this.getWordColor(token);
+            case "punctuation":
+                return this.token_colors["punctuation"];
+            case "number":                
+                return this.token_colors["number"];
+            case "operator":
+                return this.token_colors["operator"];
+            default:
+                return "#ff0000";
+        }
+    }
+
+    // I know... it is not made by me... but it just takes SOOOOOO much time to think of all the keywords... it isn't worth it. It's not that deep.
+    getWordColor(token)
+    {
+        switch (token.text)
+        {
+            // ───────── Control Flow ─────────
             case "if":
             case "else":
             case "for":
             case "while":
+            case "do":
             case "switch":
             case "case":
             case "default":
             case "break":
             case "continue":
-                return  "#ff7777";
-            case "vec2":
-            case "vec3":
-            case "vec4":
-            case "mat2":
-            case "mat3":
-            case "mat4":
-                return  "#ff77ff";
+            case "return":
+            case "discard":
+                return this.token_colors["control flow"];
+
+            // ───────── Storage / Qualifiers ─────────
+            case "const":
             case "uniform":
-            case "attribute":
-            case "varying":
-                return "#77ff77";
+            case "attribute":   // WebGL1
+            case "varying":     // WebGL1
+            case "in":
+            case "out":
+            case "inout":
+            case "precision":
+            case "highp":
+            case "mediump":
+            case "lowp":
+            case "struct":
+            case "layout":      // WebGL2
+            case "centroid":
+            case "flat":
+            case "smooth":
+                return this.token_colors["storage qualifier"];
+
+            // ───────── Scalar Types ─────────
             case "void":
-            case "float":
-            case "int":
             case "bool":
+            case "int":
+            case "uint":        // WebGL2
+            case "float":
+                return this.token_colors["scalar"];
+
+            // ───────── Vector Types ─────────
             case "vec2":
             case "vec3":
             case "vec4":
+            case "ivec2":
+            case "ivec3":
+            case "ivec4":
+            case "uvec2":       // WebGL2
+            case "uvec3":
+            case "uvec4":
+            case "bvec2":
+            case "bvec3":
+            case "bvec4":
+                return this.token_colors["vector"];
+
+            // ───────── Matrix Types ─────────
             case "mat2":
             case "mat3":
             case "mat4":
-                return "#77ffff";
+            case "mat2x2":
+            case "mat2x3":
+            case "mat2x4":
+            case "mat3x2":
+            case "mat3x3":
+            case "mat3x4":
+            case "mat4x2":
+            case "mat4x3":
+            case "mat4x4":
+                return this.token_colors["matrix"];
+
+            // ───────── Samplers ─────────
+            case "sampler2D":
+            case "samplerCube":
+            case "sampler3D":        // WebGL2
+            case "sampler2DArray":   // WebGL2
+            case "sampler2DShadow":
+            case "samplerCubeShadow":
+                return this.token_colors["sampler"];
+
+            // ───────── Built-in Variables ─────────
+            case "gl_Position":
+            case "gl_PointSize":
+            case "gl_FragCoord":
+            case "gl_FrontFacing":
+            case "gl_PointCoord":
+            case "gl_FragDepth":
+            case "gl_VertexID":      // WebGL2
+            case "gl_InstanceID":    // WebGL2
+            case "gl_FragColor":     // WebGL1 only
+                return this.token_colors["gl vars"];
+            case "main":
+                return this.token_colors["identifier"];
             default:
-                if (token[0] == "#") return "#8077ff";
-                if (/^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(token)) return "#ff7777"; // What the Fu**!
-                return "#ffffff";
+                if (token.text.startsWith("#"))
+                    return this.token_colors["preprocessor"];                
+                if (this.identifiers.get(token.text))
+                    return this.token_colors["identifier"];
+                return this.token_colors["char"];
         }
     }
 
@@ -1441,9 +1933,6 @@ class Editor {
     //#########################################################################
     //                         MAINLOOP FUNCTIONS
     //#########################################################################
-
-
-   
 
     update() {
         this.ordered_selection = { start: this.selection.start, end: this.selection.end };
