@@ -43,18 +43,18 @@ class Editor {
         this.numbers = new Map("0123456789".split("").map((c) => [c, c.charCodeAt(0)]));
         this.operators = new Map("+-*/%&|^".split("").map((c) => [c, c.charCodeAt(0)]));
         this.token_colors = {
-            "number": "#948eae",
-            "operator": "#adffac",
-            "punctuation": "#cc75cf",
+            "number": "#bdbbff",
+            "operator": "#ffe8ac",
+            "punctuation": "#8edf99",
             "control_flow": "#534fa2",
-            "storage_qualifier": "#006eff",
+            "storage_qualifiers": "#006eff",
             "char": "#ffffff",
-            "scalar": "#3d5bba",
+            "scalar": "#4d43ba",
             "vector": "#4d43ba",
-            "matrix": "#5943ba",
-            "sampler": "#7543ba",
-            "gl vars": "#9243ba",
-            "preprocessor": "#201577",
+            "matrix": "#4d43ba",
+            "sampler": "#4d43ba",
+            "gl vars": "#7ea5e4",
+            "preprocessor": "#4d43ba",
             "string": "#ff9900",
             "identifier": "#aaf1ff"
         };
@@ -188,7 +188,6 @@ class Editor {
         });
 
         this.canvas.addEventListener('mousedown', (e) => {
-            
             this.mouseButtons[e.button] = true;
             this.mouseClicked[e.button] = true;
             if (e.x < this.menu_width) return;
@@ -203,6 +202,8 @@ class Editor {
             col = Math.max(0, col);        
             const cursorxbef = this.cursor_x;
             const cursorybef = this.cursor_y;
+            if (cursorxbef != this.cursor_x || cursorybef != this.cursor_y) this.cursor_blink = 0;
+
             this.cursor_y = line;
             this.cursor_x = col;
             this.preferred_cursor_x = col;
@@ -210,13 +211,38 @@ class Editor {
             this.selection.start.x = col;
             this.selection.end.y = line;
             this.selection.end.x = col;
-            if (cursorxbef != this.cursor_x || cursorybef != this.cursor_y) this.cursor_blink = 0;
+            if (this.can_double_click && !this.has_double_clicked) {
+                this.doubleClick(line, col);
+                this.has_double_clicked = true;
+            } else if (this.can_double_click) {
+                this.addDoubleClick(line, col);
+                this.has_double_clicked = false;
+                this.can_double_click = false;
+            }
+            else {
+                this.has_double_clicked = false;
+                this.can_double_click = false;
+            }
         });
+
+        this.can_double_click = false;
+        this.has_double_clicked = false;
+        this.double_click_timeout = 200;
+
         this.canvas.addEventListener('mouseup', (e) => {
             this.mouseButtons[e.button] = false;
             this.mouseClicked[e.button] = false;
             this.is_selecting = false;
+            this.can_double_click = true;
+            setTimeout(() => {
+                if (!this.has_double_clicked)
+                    this.can_double_click = false;
+            }, this.double_click_timeout);
+            setTimeout(() => {
+                this.can_double_click = false;
+            }, this.double_click_timeout*2);
         });
+        
         window.addEventListener('keydown', (e) => this.typeKey(e));
         window.addEventListener('keyup', (e) => {
             if (e.key === "Control") this.is_ctrl = false;
@@ -258,6 +284,60 @@ class Editor {
         col = Math.min(this.lines[line].length, col);
         col = Math.max(0, col);
         this.selection.end = { x: col, y: line };
+    }
+
+    addDoubleClick(row, col) {
+        let x = 0;
+        while (x < this.lines[row].length && this.lines[row][x] == " ") x++;
+        this.selection = { start: { x: x, y: row }, end: { x: this.lines[row].length, y: row } };
+    }
+
+    doubleClick(row, col)
+    {
+        let x = col;
+        let char = this.lines[row][x];
+        while (this.isDoubleClicked(row, x, char, col))
+        {
+            x--;
+            char = this.lines[row][x];
+        }
+        let start_x = x;
+        x = col;
+        char = this.lines[row][x];
+        while (this.isDoubleClicked(row, x, char, col))
+        {
+            x++;
+            char = this.lines[row][x];
+        }
+        let end_x = x;
+        this.selection.start = { x: start_x + 1, y: row };
+        this.selection.end = { x: end_x, y: row };
+    }
+
+    isDoubleClicked(row, col, char, startcol) {        
+        if (col < 0 || col >= this.lines[row].length)
+            return false;        
+        if ((char !== "." && char !== "+" && char !== "-" && char !== "e" && char !== "E"))
+        {                        
+            if (this.punctuation.has(char) || this.operators.has(char))
+                return false;
+        }
+        else {
+            let is_number = false;
+            if (col > 1) {
+                let prev_char = this.lines[row][col - 1];
+                if (this.numbers.has(prev_char))
+                    is_number = true;
+            }
+            if (col < this.lines[row].length - 1) {
+                let next_char = this.lines[row][col + 1];
+                if (this.numbers.has(next_char))
+                    is_number = true;
+            }
+            if (!is_number)
+                return !this.punctuation.has(char) && !this.operators.has(char);
+        }
+        return true;
     }
 
 
@@ -1605,7 +1685,6 @@ class Editor {
                 const char = line[j];
                 if((this.canSplit(char, {type: token_type, text: token}))) {
                     if (token !== "") {
-                        token_type = this.get_token_type("", {type: token_type, text: token});
                         tokens.push({text: token, type: token_type});
                         token = "";
                         token_type = "operator";  
@@ -1615,7 +1694,6 @@ class Editor {
                 else if (j >= line.length - 1) {
                     token_type = this.get_token_type(char, {type: token_type, text: token});
                     token += char;
-                    token_type = this.get_token_type("", {type: token_type, text: token});
                     tokens.push({text: token, type: token_type});
                 }
                 else
@@ -1695,9 +1773,6 @@ class Editor {
         
         switch (token.type) {
             case "number":
-                if (token.text.startsWith("s"))
-                    console.log(token, char);
-                    
                 // everything is possible
                 if (this.numbers.has(char)) return "number";
                 if (this.operators.has(char)) return "operator";
@@ -1787,7 +1862,7 @@ class Editor {
             case "centroid":
             case "flat":
             case "smooth":
-                return this.token_colors["storage qualifier"];
+                return this.token_colors["storage_qualifiers"];
 
             // ───────── Scalar Types ─────────
             case "void":
