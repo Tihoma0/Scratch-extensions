@@ -78,6 +78,8 @@ class Editor {
 
         this.is_dirty = true;
 
+        this.autoscroll_margin = 100;
+
         this.menuItems = [
             {
                 text: "Run",
@@ -89,6 +91,20 @@ class Editor {
 
         this.hoveredMenuItems = [];
 
+        this.scrollbar_width = 50;
+        this.scrollbar_colors = {
+            background: "#333333",
+            slider: "#666666",
+            slider_hover: "#999999",
+            slider_active: "#cccccc"
+        }
+
+        this.is_vertical_scrollbar_hovered = false;
+        this.is_vertical_scrollbar_active = false;
+        this.scrollbar_start_offset = 0;
+
+        this.is_horizontal_scrollbar_hovered = false;
+        this.is_horizontal_scrollbar_active = false;
 
         this.changeRecord_index = 0;
 
@@ -136,7 +152,7 @@ class Editor {
         this.scroll_x = 0;
         this.scroll_y = 0;
 
-        this.viewport_height = 0;
+        this.height = 0;
         this.viewport_width = 0;
 
         this.menu_width = 100;
@@ -257,17 +273,18 @@ class Editor {
     
 
     resize() {
-        const vv = window.visualViewport;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
         const dpr = window.devicePixelRatio || 1;
-        this.canvas.style.width = vv.width + "px";
-        this.canvas.style.height = vv.height + "px";
-        this.canvas.width = Math.round(vv.width * dpr);
-        this.canvas.height = Math.round(vv.height * dpr);
+        this.canvas.style.width = width + "px";
+        this.canvas.style.height = height + "px";
+        this.canvas.width = Math.round(width * dpr);
+        this.canvas.height = Math.round(height * dpr);
         this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this.ctx.font = this.font;
         this.character_width = this.ctx.measureText('x').width;
-        this.viewport_height = Number(vv.height);
-        this.viewport_width = Number(vv.width);
+        this.height = Number(height);
+        this.viewport_width = Number(width);
     }
 
     //#########################################################################
@@ -1359,7 +1376,7 @@ class Editor {
     autoScroll()
     {        
         if (this.cursor_y - 2 < this.scroll_y/this.line_height) this.scroll_y = (this.cursor_y - 2) * this.line_height;
-        if (this.cursor_y + 7 > (this.scroll_y + this.viewport_height)/this.line_height) this.scroll_y = (this.cursor_y + 7) * this.line_height - this.viewport_height;
+        if (this.cursor_y + 7 > (this.scroll_y + this.height)/this.line_height) this.scroll_y = (this.cursor_y + 7) * this.line_height - this.height;
         if (isNaN(this.scroll_y)) this.scroll_y = 0;
         this.scroll_y = Math.max(0, this.scroll_y)
         if (this.cursor_x + 20 > (this.viewport_width - this.menu_width - this.editor_x_offset) / this.character_width) this.scroll_x = (this.cursor_x + 20) * this.character_width - this.viewport_width + this.menu_width + this.editor_x_offset;
@@ -1645,7 +1662,7 @@ class Editor {
     renderParantheses()
     {
         let start_y = Math.floor(this.scroll_y/this.line_height);
-        let end_y = Math.ceil((this.scroll_y + this.viewport_height)/this.line_height)
+        let end_y = Math.ceil((this.scroll_y + this.height)/this.line_height)
         end_y = Math.min(this.lines.length, end_y);
         
         for (let i = start_y; i < end_y; i++) {
@@ -1673,8 +1690,9 @@ class Editor {
     render() {
         this.ctx.fillStyle = '#18181b';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.highlightCurrentLine();
         let start_y = Math.floor(this.scroll_y/this.line_height);
-        let end_y = Math.ceil((this.scroll_y + this.viewport_height)/this.line_height)
+        let end_y = Math.ceil((this.scroll_y + this.height)/this.line_height)
         end_y = Math.min(this.lines.length, end_y);
         for (let i = start_y; i < end_y; i++) {
             const tokens = [];
@@ -1721,6 +1739,7 @@ class Editor {
         this.renderParantheses();
         this.drawSelection();
         this.drawCursor();
+        this.drawScrollbars();
         this.drawMenu();
     }
 
@@ -1937,13 +1956,13 @@ class Editor {
         if (this.cursor_blink > 1) return;
         this.ctx.fillStyle = this.cursor_color;
         let x = this.cursor_x * this.character_width + this.menu_width + this.editor_x_offset - this.cursor_width / 2 - this.scroll_x;
-        this.ctx.fillRect(x, this.cursor_y * this.line_height + this.line_height + 5  - this.scroll_y, this.cursor_width, -this.character_height - 5);
+        this.ctx.fillRect(x, this.cursor_y * this.line_height - this.scroll_y + this.line_spacing + this.character_height/4, this.cursor_width, this.line_height);
     }
 
     drawLineNumbers() {
         this.ctx.fillStyle = "#777777ff";
         let start_y = Math.floor(this.scroll_y/this.line_height);
-        let end_y = Math.ceil((this.scroll_y + this.viewport_height)/this.line_height)
+        let end_y = Math.ceil((this.scroll_y + this.height)/this.line_height)
         end_y = Math.min(this.lines.length, end_y);
         for (let i = start_y; i < end_y; i++) {
             const element = this.lines[i];
@@ -2005,6 +2024,32 @@ class Editor {
         }
     }
 
+    autoscrollSelection() {
+        if (!this.has_selection || !this.mouseButtons[0]) return;
+        let dist = this.autoscroll_margin + this.mouseY - this.height;
+        dist = Math.max(dist, 0);
+        this.scroll_y += dist;
+        dist = + this.mouseY - this.autoscroll_margin;
+        dist = Math.min(dist, 0);
+        this.scroll_y += dist;
+        this.scroll_y = Math.max(0, this.scroll_y);
+    }
+
+    highlightCurrentLine() {
+        this.ctx.fillStyle = '#333333';
+        this.ctx.fillRect(this.menu_width, this.cursor_y * this.line_height - this.scroll_y + this.line_spacing + this.character_height/4, this.canvas.width - this.menu_width, this.line_height);
+    }
+
+    //#########################################################################
+    //                               SCROLLBARS                               
+    //#########################################################################
+
+    drawScrollbars() {
+        this.ctx.fillStyle = this.scrollbar_colors.background;
+        this.ctx.fillRect(this.menu_width, this.canvas.height - this.scrollbar_width, this.canvas.width - this.menu_width, this.scrollbar_width);
+        this.ctx.fillRect(this.canvas.width - this.scrollbar_width, 0, this.scrollbar_width, this.canvas.height);
+    }
+
     //#########################################################################
     //                         MAINLOOP FUNCTIONS
     //#########################################################################
@@ -2019,7 +2064,10 @@ class Editor {
         this.editor_x_offset = Math.max(this.character_width*2 + 5, Math.ceil(Math.log10(this.lines.length + 1)) * this.character_width + this.character_width + 5); // well that is quite a function....
         this.updateMenu();
         this.has_selection = this.selection.start.x != this.selection.end.x || this.selection.start.y != this.selection.end.y;
+        this.autoscrollSelection();
         this.mouseClicked = [false, false, false];
+        this.scroll_y = Math.min(this.scroll_y, this.lines.length * this.line_height);
+        this.scroll_y = Math.max(0, this.scroll_y);
     }
 
     updateMenu() {
