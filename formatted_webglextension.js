@@ -902,7 +902,8 @@
         font-family: Arial, sans-serif;
         padding-left: 0.5vw;
         box-sizing: border-box;
-        
+        word-wrap: nowrap;
+        user-select: none;
     } .menu .close {
         position: relative;
         width: 2vw;
@@ -947,10 +948,9 @@
         gap: 0.3em;
         padding-top: 0.3em;
         overflow-y: auto;
-        
     } .qArrayDisplay {
         width: auto;
-        height: 1.2em;
+        min-height: 1.2em;
         background-color: rgb(30, 30, 30);
         color: rgb(255, 255, 255);
         font-size: 1em;
@@ -958,23 +958,38 @@
         flex-direction: row;
         justify-content: space-between;
         align-items: center;
-        
+        margin-right: 1vw;
+        margin-left: 1vw;
     } .qArrayDisplayerror {
         background-color: rgb(255, 0, 0);
         
-    } .qArrayDisplay .Name {
+    } .qArrayDisplay .NameDisplay {
         width: 20%;
         font-size: 0.8em;
         padding-left: 0.3em;
         padding-right: 0.3em;
         
-    } .qArrayDisplay .Value {
-        width: auto;
+    } .qArrayDisplay .ValueDisplay {
+        max-width:  80%;
+        height: auto;
         font-size: 0.8em;
         padding-left: 0.3em;
         padding-right: 0.3em;
-        
-    }`;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+    .ValueDisplaysaved {
+        background-color: rgb(82, 136, 75);
+    }
+
+    .ValueDisplayerror {
+        background-color: rgb(136, 75, 75);
+    }
+
+
+    `;
     class QArrayInspector {
         constructor() {
             this.displayElements = new Map();
@@ -988,16 +1003,8 @@
             this.div_menu = document.createElement('div');
             this.div_menu.setAttribute('class', 'menu');
             this.div.appendChild(this.div_menu);
-            this.div_menu.innerHTML = "Inspector";
-            this.div_close = document.createElement('div');
-            this.div_close.setAttribute('class', 'close');
-            this.div_menu.appendChild(this.div_close);
-            const crossH = document.createElement('div');
-            const crossV = document.createElement('div');
-            crossH.setAttribute('class', 'cross horizontal');
-            crossV.setAttribute('class', 'cross vertical');
-            this.div_close.appendChild(crossH);
-            this.div_close.appendChild(crossV);
+            this.div_menu.innerHTML = "  Inspector";
+            this.addCross();
             this.QArrayDisplayBox = document.createElement('div');
             this.QArrayDisplayBox.setAttribute('class', 'qArrayDisplayBox');
             this.div.appendChild(this.QArrayDisplayBox);
@@ -1015,12 +1022,7 @@
                 this.div.style.zIndex = '9999';
                 
             });
-            this.div_close.addEventListener('click', () => {
-                this.hide();
-                this.isDragging = false;
-                this.isResizing = false;
-                
-            });
+            
             this.div.addEventListener('mousedown', (e) => {
                 const rect = this.div.getBoundingClientRect();
                 const onRight = rect.right - e.clientX < 8;
@@ -1090,10 +1092,36 @@
                 
             });
             
-        } hide() {
+        } 
+        
+        addCross() {
+            this.div_close = document.createElement('div');
+            this.div_close.setAttribute('class', 'close');
+            this.div_menu.appendChild(this.div_close);
+            const crossH = document.createElement('div');
+            const crossV = document.createElement('div');
+            crossH.setAttribute('class', 'cross horizontal');
+            crossV.setAttribute('class', 'cross vertical');
+            this.div_close.appendChild(crossH);
+            this.div_close.appendChild(crossV);
+            this.div_close.addEventListener('click', () => {
+                this.hide();
+                this.isDragging = false;
+                this.isResizing = false;
+                
+            });
+        }
+        
+        hide() {
+            for (const [name, [qArrayDisplay, ValueDisplay, nameDisplay]] of this.displayElements.entries()) {
+                if (ValueDisplay.classList.contains("ValueDisplayerror")) {
+                    this.showError(`Error in QArray ${name}`);
+                    ValueDisplay.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
+            }
             this.div.style.zIndex = '-1';
             this.is_visible = false;
-            
         } 
         
         show() {
@@ -1103,10 +1131,26 @@
 
         showError(message) {
             this.div_menu.style.backgroundColor = 'rgb(183, 22, 22)';
+            this.div_menu.style.overflowX = 'auto';
+            this.div_menu.style.wordWrap = 'nowrap';
+            this.div_menu.style.textWrap = 'nowrap';
             this.div_menu.innerHTML = `ERROR: ${message}`;
-            this.is_visible = true;
+            this.div_menu.style.height = "3.2vw";
+            this.show();
+            setTimeout(() => {
+                this.div_menu.style.backgroundColor = 'rgb(43, 43, 43)';
+                this.div_menu.innerHTML = 'Inspector';
+                this.div_menu.style.overflowX = 'hidden';
+                this.div_menu.style.wordWrap = 'normal';
+                this.div_menu.style.textWrap = 'normal';
+                this.div_menu.style.height = "2.6vw";
+                this.addCross();
+            }, Math.min(Math.max(2000, message.length * 50), 20000));
         }
-        
+        formatSize(kb) {
+            if (kb < 1024) return `${kb.toFixed(1)} KB`;
+            return `${(kb / 1024).toFixed(1)} MB`;
+        }
         update(qArrays) {
             const names = new Set(qArrays.keys());
             for (const name of this.displayElements.keys()) {
@@ -1117,39 +1161,67 @@
             } for (const [name, array] of qArrays.entries()) {
                 if (this.displayElements.has(name)) {
                     const [qArrayDisplay, ValueDisplay, nameDisplay] = this.displayElements.get(name);
-                    const text = `${
-                        JSON.stringify(array)
-                    }`;
-                    if (text.startsWith("ERROR:")) { qArrayDisplay.setAttribute('class', 'qArrayDisplayerror'); }
-                    ValueDisplay.textContent = `${text}`;
-                    nameDisplay.textContent = `${name}`;
+                    const text = `${JSON.stringify(array)}`;
+                    const kb = Math.max(0, ((text.length - array.length) * 2) / 1024);
+                    nameDisplay.title = `length: ${array.length},\napproximate size: ${this.formatSize(kb)}`;
+                    if (!qArrayDisplay.contains(document.activeElement) && text != ValueDisplay.textContent && !ValueDisplay.classList.contains("ValueDisplayerror")) {
+                        if (text.startsWith("ERROR:")) { qArrayDisplay.classList.add("qArrayDisplayerror"); } else { qArrayDisplay.classList.remove("qArrayDisplayerror"); }
+                        ValueDisplay.textContent = `${text}`;
+                        nameDisplay.textContent = `${name}`;
+                    }
                 } 
                 else { this.addQArrayDisplay(array, name); } 
             } 
-        } 
+        }
+
+
+
         addQArrayDisplay(qArray, name = null) { 
             const qArrayDisplay = document.createElement('div'); 
             qArrayDisplay.setAttribute('class', 'qArrayDisplay'); 
             const nameDisplay = document.createElement('div'); 
-                        nameDisplay.setAttribute('class', 'nameDisplay'); 
-                        const ValueDisplay = document.createElement('div'); 
-                        ValueDisplay.setAttribute('class', 'ValueDisplay'); 
-                        const text = `${JSON.stringify(qArray)}`; 
-                        if (text.startsWith("ERROR:")) {
-                            qArrayDisplay.setAttribute('class', 'qArrayDisplayerror');
-                        
-                    } ValueDisplay.textContent = `${
-                        text
-                    }`;
-                    nameDisplay.textContent = `${
-                        name
-                    }`;
-                    this.displayElements.set(name, [qArrayDisplay, ValueDisplay, nameDisplay]);
-                    qArrayDisplay.appendChild(nameDisplay);
-                    qArrayDisplay.appendChild(ValueDisplay);
-                    this.QArrayDisplayBox.appendChild(qArrayDisplay);
-                    
-                } 
+            nameDisplay.setAttribute('class', 'nameDisplay'); 
+            const ValueDisplay = document.createElement('div'); 
+            ValueDisplay.setAttribute('class', 'ValueDisplay'); 
+            const text = `${JSON.stringify(qArray)}`; 
+            if (text.startsWith("ERROR:"))
+                qArrayDisplay.setAttribute('class', 'qArrayDisplayerror');
+            ValueDisplay.textContent = `${text}`;
+            nameDisplay.textContent = `${name}`;
+            this.displayElements.set(name, [qArrayDisplay, ValueDisplay, nameDisplay]);
+            qArrayDisplay.appendChild(nameDisplay);
+            qArrayDisplay.appendChild(ValueDisplay);
+            this.QArrayDisplayBox.appendChild(qArrayDisplay);
+            ValueDisplay.contentEditable = true;
+            ValueDisplay.addEventListener('blur', () => {
+                try {
+                    const newValue = JSON.parse(ValueDisplay.textContent);
+                    qArray.length = 0;
+                    qArray.push(...newValue);
+                    ValueDisplay.setAttribute('class', 'ValueDisplay ValueDisplaysaved');
+                    setTimeout(() => {
+                        ValueDisplay.classList.remove("ValueDisplaysaved");
+                    }, 300);
+                } catch (e) {
+                    ValueDisplay.setAttribute('class', 'ValueDisplay ValueDisplayerror');
+                }
+            });
+            ValueDisplay.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                try {
+                    const newValue = JSON.parse(ValueDisplay.textContent);
+                    qArray.length = 0;
+                    qArray.push(...newValue);
+                    ValueDisplay.setAttribute('class', 'ValueDisplay ValueDisplaysaved');
+                    setTimeout(() => {
+                        ValueDisplay.classList.remove("ValueDisplaysaved");
+                    }, 300);
+                } catch (e) {
+                    ValueDisplay.setAttribute('class', 'ValueDisplay ValueDisplayerror');
+                }
+            });
+        } 
     } 
                 
     class ArrayExtension {
@@ -1307,11 +1379,13 @@
                 },  {
                     // copyQArraytoQarray 
                     opcode: "copyQArraytoQarray", 
-                    blockType: Scratch.BlockType.COMMAND, text: "copy QArray [NAME1] to QArray [NAME2]", arguments: {
-                            NAME1: {
-                                type: Scratch.ArgumentType.STRING, defaultValue: "myArray" 
-                        }, NAME2: {
-                                type: Scratch.ArgumentType.STRING, defaultValue: "myArray2" 
+                    blockType: Scratch.BlockType.COMMAND, text: "copy QArray [NAME] to QArray [NAME2]", arguments:
+                    {
+                        NAME: {
+                            type: Scratch.ArgumentType.STRING, defaultValue: "myArray" 
+                        },  
+                        NAME2: {
+                            type: Scratch.ArgumentType.STRING, defaultValue: "myArray2" 
                         }, 
                     } 
                 }, {
@@ -1392,7 +1466,6 @@
                 const bool = v.toLowerCase() === "true" ? true : v.toLowerCase() === "false" ? false : undefined;
                 if (bool !== undefined) return bool;
                 return v;
-                
         }
 
         check_existence(args) {
@@ -1412,7 +1485,8 @@
         }
 
         copySectionOfQArray(args, util) {
-            this.check_existence(args)
+            if (!this.check_existence(args))
+                return;
             if (args.INDEX < 0)
                 args.INDEX = this.QArrays.get(args.NAME).length + args.INDEX;
             const target = Math.min(args.INDEX + args.COPYCOUNT, this.QArrays.get(args.NAME).length);
@@ -1422,7 +1496,8 @@
         }
 
         replaceSectionQArray(args, util) {
-            this.check_existence(args)
+            if (!this.check_existence(args))
+                return;
             if (args.INDEX < 0)
                 args.INDEX = this.QArrays.get(args.NAME).length + args.INDEX;
             const value = args.SHOULDCAST === "true" ? this.castValue(args.VALUE) : String(args.VALUE);
@@ -1433,35 +1508,34 @@
         }
 
         fillQArray(args, util) {
-            this.check_existence(args)
             const value = args.SHOULDCAST === "true" ? this.castValue(args.VALUE) : String(args.VALUE);
             this.QArrays.set(args.NAME, new Array(args.SIZE).fill(value));
         }
 
         deleteSectionQArray(args, util) {
-            this.check_existence(args)
+            if (!this.check_existence(args))
+                return;
             if (args.INDEX < 0)
                 args.INDEX = this.QArrays.get(args.NAME).length + args.INDEX;
             this.QArrays.get(args.NAME).splice(args.INDEX, args.DELETECOUNT);
         }
 
         lengthOfQArray(args, util) {
-                const arr = this.QArrays.get(args.NAME);
-                if (!arr) {
-                    this.QArrayInspector.showError("QArray " + args.NAME + " does not exist")
-                    return "ERROR: QArray " + args.NAME + " does not exist";
-                }
-                return arr.length;
+            if (!this.check_existence(args))
+                return;
+            return this.QArrays.get(args.NAME).length;
         }
 
         containsQArray(args, util) {
-                this.check_existence(args)
+                if (!this.check_existence(args))
+                    return;
                 const value = args.SHOULDCAST === "true" ? this.castValue(args.VALUE) : String(args.VALUE);
                 return this.QArrays.get(args.NAME).includes(value);
         }
 
         indexOfInQArray(args, util) {
-                this.check_existence(args)
+                if (!this.check_existence(args))
+                    return;
                 const value = args.SHOULDCAST === "true" ? this.castValue(args.VALUE) : String(args.VALUE);
                 return this.QArrays.get(args.NAME).indexOf(value);
         }
@@ -1471,19 +1545,21 @@
         } 
         
         createQArrayFromJSArray(args, util) {
-                try {
-                    const arr = JSON.parse(args.ARRAY);
-                    if (!Array.isArray(arr))
-                        this.QArrayInspector.showError("Provided JS array is not a valid array");
-                    this.QArrays.set(args.NAME, arr.map(this.castValue));
+            try {
+                const arr = JSON.parse(args.ARRAY);
+                if (!Array.isArray(arr))
+                    this.QArrayInspector.showError("Provided JS array is not a valid array");
+                this.QArrays.set(args.NAME, arr.map(this.castValue));
             } catch {
-                    this.QArrays.set(args.NAME, "ERROR: No valid JS array syntax at createQArrayFromJSArray: " + args.ARRAY);
+                this.QArrays.set(args.NAME, "ERROR: No valid JS array syntax at createQArrayFromJSArray: " + args.ARRAY);
+                this.QArrayInspector.showError("Provided JS array is not a valid array");
             } 
         } 
         
         copyQArraytoQarray(args, util) {
-            this.check_existence(args);
-            this.QArrays.set( args.NAME2, [...this.QArrays.get(args.NAME1)] );
+            if(!this.check_existence(args))
+    return;
+            this.QArrays.set( args.NAME2, [...this.QArrays.get(args.NAME)] );
         } 
         
         deleteQArray(args, util) {
@@ -1491,7 +1567,8 @@
         } 
         
         pushQArray(args, util) {
-            this.check_existence(args);
+            if(!this.check_existence(args))
+                return;
             if (args.SHOULDCAST === "true") {
                 args.VALUE = this.castValue(args.VALUE) 
             } else {
@@ -1501,30 +1578,39 @@
         } 
         
         popQArray(args, util) {
-                this.check_existence(args);
+                if(!this.check_existence(args))
+    return;
                 if (this.QArrays.get(args.NAME).length === 0) return "";
                 return this.QArrays.get(args.NAME).pop();
         }
 
         getQArray(args, util) {
-                const arr = this.QArrays.get(args.NAME);
-                if (!arr)
-                    this.QArrayInspector.showError("QArray " + args.NAME + " does not exist");
-                if (args.INDEX < 0 || args.INDEX >= arr.length)
-                    this.QArrayInspector.showError("Index out of bounds for QArray " + args.NAME);
-                return arr[args.INDEX];
+            if(!this.check_existence(args))
+                return;
+            if (args.INDEX < 0 || args.INDEX >= this.QArrays.get(args.NAME).length)
+            {
+                if (!this.QArrayInspector)
+                    this.QArrayInspector = new QArrayInspector();
+                this.QArrayInspector.showError("Index out of bounds for QArray " + args.NAME);
+                return;
+            }
+            return this.QArrays.get(args.NAME)[args.INDEX];
         }
         
         clearQArray(args, util) {
-            this.check_existence(args);
+            if(!this.check_existence(args))
+                return;
             this.QArrays.set(args.NAME, []);
         } 
         
         sortQArray(args, util) {
-                this.QArrays.get(args.NAME).sort();
+            if(!this.check_existence(args))
+                return;
+            this.QArrays.get(args.NAME).sort();
         } 
         reverseQArray(args, util) {
-            this.check_existence(args)
+            if(!this.check_existence(args))
+                return;
             this.QArrays.get(args.NAME).reverse();
         } 
         copyToScratchList(args, util) {
@@ -1532,25 +1618,40 @@
             const stage = Scratch.vm.runtime.getTargetForStage();
             const list = target.lookupVariableByNameAndType(args.NAME2, 'list') || stage.lookupVariableByNameAndType(args.NAME2, 'list');
             if (!list)
+            {
+                if (!this.QArrayInspector)
+                    this.QArrayInspector = new QArrayInspector();
                 this.QArrayInspector.showError(`List "${args.NAME2}" not found`);
+                return;
+            }
             if (!this.QArrays.has(args.NAME))
             {
                 if (!this.QArrayInspector)
                     this.QArrayInspector = new QArrayInspector();
                 this.QArrayInspector.showError(`QArray "${args.NAME}" not found`);
+                return;
             }
             list.value = this.QArrays.get(args.NAME).map(v => String(v));
         }
 
         copyFromScratchList(args, util) {
-                const target = util.target;
-                const stage = Scratch.vm.runtime.getTargetForStage();
-                const list = target.lookupVariableByNameAndType(args.NAME, 'list') || stage.lookupVariableByNameAndType(args.NAME, 'list');
-                if (!list) {
-                    console.warn(`List "${args.NAME}" not found`);
-                    return;
-                    
-            } this.QArrays.set(args.NAME2, Array.from(list.value, v => this.castValue(v)));
+            const target = util.target;
+            const stage = Scratch.vm.runtime.getTargetForStage();
+            const list = target.lookupVariableByNameAndType(args.NAME, 'list') || stage.lookupVariableByNameAndType(args.NAME, 'list');
+            if (!list) {
+                if (!this.QArrayInspector)
+                    this.QArrayInspector = new QArrayInspector();
+                this.QArrayInspector.showError(`List "${args.NAME}" not found`);
+                return;
+            }
+            if (!this.QArrays.has(args.NAME2))
+            {
+                if (!this.QArrayInspector)
+                    this.QArrayInspector = new QArrayInspector();
+                this.QArrayInspector.showError(`QArray "${args.NAME2}" not found`);
+                return;
+            }
+            this.QArrays.set(args.NAME2, Array.from(list.value, v => this.castValue(v)));
         }
 
         showQArrays(args, util) {
@@ -1567,11 +1668,10 @@
                 
         } 
         updateQArrayInspector() {
-                if (this.QArrayInspector && this.QArrayInspector.is_visible) {
-                    if (!this._lastUpdate || performance.now() - this._lastUpdate > 100) {
+            if (this.QArrayInspector && this.QArrayInspector.is_visible) {
+                if (!this._lastUpdate || performance.now() - this._lastUpdate > 100) {
                     this.QArrayInspector.update(this.QArrays);
-                        this._lastUpdate = performance.now();
-                        
+                    this._lastUpdate = performance.now();
                 } 
             } requestAnimationFrame(() => this.updateQArrayInspector());
                 
